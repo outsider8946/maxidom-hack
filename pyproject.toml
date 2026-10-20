@@ -1,0 +1,19 @@
+[project]
+name = "maxidom-hack"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Maxim Abramov", email = "abramovmaxim.894@gmail.com" }
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=2.0.2",
+]
+
+[project.scripts]
+maxidom-hack = "maxidom_hack:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
