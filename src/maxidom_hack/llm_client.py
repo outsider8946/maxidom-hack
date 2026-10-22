@@ -19,15 +19,15 @@ class LLMClient:
 
     def _load_embedding_model(self) -> SentenceTransformer:
         """Load the embedding model using SentenceTransformer."""
-
+        model_name = os.environ.get("EMBED", "intfloat/multilingual-e5-small")
         model = SentenceTransformer(
-            os.environ.get("EMBED", "google/embeddinggemma-300m"), 
+            model_name, 
             device=self.device, 
             trust_remote_code=True,
             model_kwargs={"torch_dtype": torch.float16},
         )
         model.max_seq_length = 256
-        print("model name: ", os.environ.get("EMBED", "google/embeddinggemma-300m"))
+        print("model name: ", model_name)
         print("device:", model.device)
         print("dtype:", model[0].auto_model.dtype)
         print("max_seq:", model.max_seq_length)
