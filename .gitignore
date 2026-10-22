@@ -1,0 +1,5 @@
+src/maxidom_hack/__pycache__/
+src/maxidom_hack/db/__pycache__/
+src/maxidom_hack/db/chroma_db/
+src/maxidom_hack/db/chroma_db/collection/
+.env
