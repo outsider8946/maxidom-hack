@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
-from math import ceil
 from typing import Optional
-import json
+from pydantic import BaseModel
 
 # ---------- модели ----------
 
@@ -126,3 +125,20 @@ class Estimate:
             ],
             "total": round(self.total, 2),
         }
+
+
+class EstimateRequest(BaseModel):
+	"""Тело запроса для полной сметы помещения."""
+
+	room: Room
+	variant: str = "capital"
+
+
+class ProductRequest(BaseModel):
+	"""Тело запроса для расчета одного товара из каталога."""
+
+	product_id: int
+	area: float
+	waste: float = 0.05
+	layers: int | None = None
+

@@ -13,6 +13,8 @@ dependencies = [
     "numpy>=2.0.2",
     "ollama>=0.6.3",
     "sentence-transformers>=5.1.2",
+    "streamlit>=1.66.1",
+    "torchvision>=0.29.1",
 ]
 
 [project.scripts]
