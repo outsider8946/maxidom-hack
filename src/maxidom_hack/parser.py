@@ -64,26 +64,58 @@ def parse_product(raw_json: dict[str, Any]) -> CatalogProduct:
     """
     characteristics = _characteristics(raw_json)
     name = str(raw_json.get("name", ""))
-    description = str(raw_json.get("description", raw_json.get("marketing_description", "")))
-    quantity = next((_number(characteristics[key]) for key in ("объем", "литраж банки", "вес") if key in characteristics), None)
-    package_area = next((_number(value) for key, value in characteristics.items() if "площад" in key), None)
-    area_match = re.search(r"(\d+[.,]\d*)\s*м2", name, re.I)
+    description = str(
+        raw_json.get("description", raw_json.get("marketing_description", ""))
+    )
+    quantity = next(
+        (
+            _number(characteristics[key])
+            for key in ("объем", "литраж банки", "вес")
+            if key in characteristics
+        ),
+        None,
+    )
+    package_area = next(
+        (_number(value) for key, value in characteristics.items() if "площад" in key),
+        None,
+    )
+    area_match = re.search(r"(\d+[.,]\d*)\s*м2", name, re.IGNORECASE)
     # В некоторых записях площадь упаковки указана только в названии товара.
-    package_area = package_area or (_number(area_match.group(1)) if area_match else None)
-    consumption = next((_number(value) for key, value in characteristics.items() if "расход" in key), None)
+    package_area = package_area or (
+        _number(area_match.group(1)) if area_match else None
+    )
+    consumption = next(
+        (_number(value) for key, value in characteristics.items() if "расход" in key),
+        None,
+    )
     if consumption is None:
         # В описаниях используются разные обозначения: г, кг и л на квадратный метр.
-        match = re.search(r"(\d+[.,]?\d*)\s*(?:гр|г|кг|л)\s*/\s*м[²2]", description, re.I)
+        match = re.search(
+            r"(\d+[.,]?\d*)\s*(?:гр|г|кг|л)\s*/\s*м[²2]", description, re.IGNORECASE
+        )
         consumption = _number(match.group(1)) if match else None
     judge = raw_json.get("judge", {})
-    moisture = any("влаг" in key and str(value).lower() in ("да", "true", "1") for key, value in characteristics.items())
+    moisture = any(
+        "влаг" in key and str(value).lower() in ("да", "true", "1")
+        for key, value in characteristics.items()
+    )
     # Сохраняем совместимость с аннотированными записями, загруженными DBLoader.
-    moisture = moisture or (isinstance(judge, dict) and bool(judge.get("moisture", False)))
-    washable = any("моющ" in key and str(value).lower() in ("да", "true", "1") for key, value in characteristics.items())
+    moisture = moisture or (
+        isinstance(judge, dict) and bool(judge.get("moisture", False))
+    )
+    washable = any(
+        "моющ" in key and str(value).lower() in ("да", "true", "1")
+        for key, value in characteristics.items()
+    )
     return CatalogProduct(
-        id=int(raw_json.get("id", 0)), name=name,
+        id=int(raw_json.get("id", 0)),
+        name=name,
         price=float(raw_json.get("price", raw_json.get("result_price", 0)) or 0),
-        unit=str(raw_json.get("unit", "")), package_area=package_area,
-        quantity_in_package=quantity, consumption_per_m2=consumption,
-        moisture_resistant=moisture, washable=washable, category=_category(raw_json),
+        unit=str(raw_json.get("unit", "")),
+        package_area=package_area,
+        quantity_in_package=quantity,
+        consumption_per_m2=consumption,
+        moisture_resistant=moisture,
+        washable=washable,
+        category=_category(raw_json),
     )
