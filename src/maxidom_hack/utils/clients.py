@@ -1,39 +1,19 @@
 import os
 import torch
 from ollama import Client
-from typing import Literal
+from typing import Literal, Any
 from sentence_transformers import SentenceTransformer
 from frida_decisions import Judge
-from maxidom_hack.enums import EmbeddingPrompts
+from maxidom_hack.utils.enums import EmbeddingPrompts
 import numpy as np
 from dotenv import load_dotenv
 
 load_dotenv()
-class LLMClient:
+
+class JudgeClient:
     def __init__(self, device: Literal['cpu', 'gpu', 'mps'] = 'mps') -> None:
         self.device = device
-        self.client = Client(host=os.environ.get("OLLAMA_HOST", "http://localhost:11434"))
-        self.embed_model = self._load_embedding_model()
-        self.llm_model = os.environ.get("LLM", "qwen3.5:4b")
         self.judge_model = self._load_judge_model()
-
-    def _load_embedding_model(self) -> SentenceTransformer:
-        """Load the embedding model using SentenceTransformer."""
-        model_name = os.environ.get("EMBED", "intfloat/multilingual-e5-small")
-        model = SentenceTransformer(
-            model_name, 
-            device=self.device, 
-            trust_remote_code=True,
-            model_kwargs={"torch_dtype": torch.float16},
-        )
-        model.max_seq_length = 256
-        print("model name: ", model_name)
-        print("device:", model.device)
-        print("dtype:", model[0].auto_model.dtype)
-        print("max_seq:", model.max_seq_length)
-        print("Реальное устройство модели:", next(model.parameters()).device)
-        print("Устройство первого слоя:", model[0].auto_model.device)
-        return model
 
     def _load_judge_model(self) -> Judge:
         """Load the judge model."""
@@ -41,26 +21,15 @@ class LLMClient:
             'ai-forever/FRIDA-Decisions',
             device=self.device,
         )
-        
-    def embed_query(self, text: str, prompt: str = 'query: ') -> np.ndarray:
-        return self.embed_model.encode(
-            text, convert_to_numpy=True,
-            normalize_embeddings=True,
-            prompt=prompt,#EmbeddingPrompts.get(prompt)
-        )
-    
-    def embed_documents(self, texts: list[str], 
-                        prompt: str= 'query: ', 
-                        batch_size: int = 128, 
-                        progress_bar: bool = False
-        ) -> np.ndarray:
-        return self.embed_model.encode(
-            texts, batch_size=batch_size, 
-            prompt=prompt, #EmbeddingPrompts.get(prompt),
-            convert_to_numpy=True, normalize_embeddings=True,
-            show_progress_bar=progress_bar,
-        )
 
+    def judge(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Evaluate the text using the judge model."""
+        return self.judge_model(request)
+
+class LLMClient:
+    def __init__(self) -> None:
+        self.client = Client(host=os.environ.get("OLLAMA_HOST", "http://localhost:11434"))
+        self.llm_model = os.environ.get("LLM", "qwen3.5:4b")
 
     def generate(self, system_prompt: str, user_prompt: str, think: bool=False) -> str:
         msgs = [
@@ -74,3 +43,44 @@ class LLMClient:
         print("content:", response["message"]["content"])
         print("thinking:", response["message"].get("thinking", ""))
         return response["message"]["content"]
+
+class EmbeddingClient:
+    def __init__(self, device: Literal['cpu', 'gpu', 'mps'] = 'mps') -> None:
+        self.device = device
+        self.embed_model = self._load_embedding_model()
+
+    def _load_embedding_model(self) -> SentenceTransformer:
+        """Load the embedding model using SentenceTransformer."""
+        model_name = os.environ.get("EMBED", "intfloat/multilingual-e5-small")
+        model = SentenceTransformer(
+            model_name, 
+            device=self.device, 
+            trust_remote_code=True,
+            model_kwargs={"torch_dtype": torch.float16},
+        )
+        model.max_seq_length = 256
+        print("device:", model.device)
+        print("dtype:", model[0].auto_model.dtype)
+        print("max_seq:", model.max_seq_length)
+        print("Реальное устройство модели:", next(model.parameters()).device)
+        print("Устройство первого слоя:", model[0].auto_model.device)
+        return model
+
+    def embed_query(self, text: str, prompt: str = 'query') -> np.ndarray:
+        return self.embed_model.encode(
+            text, convert_to_numpy=True,
+            normalize_embeddings=True,
+            prompt=EmbeddingPrompts.get(prompt)
+        )
+    
+    def embed_documents(self, texts: list[str], 
+                        prompt: str = 'query', 
+                        batch_size: int = 128, 
+                        progress_bar: bool = False
+        ) -> np.ndarray:
+        return self.embed_model.encode(
+            texts, batch_size=batch_size, 
+            prompt=EmbeddingPrompts.get(prompt),
+            convert_to_numpy=True, normalize_embeddings=True,
+            show_progress_bar=progress_bar,
+        )
