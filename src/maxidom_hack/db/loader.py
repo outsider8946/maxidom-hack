@@ -1,7 +1,7 @@
 import json
 from tqdm import tqdm
 from time import time
-from maxidom_hack.llm_client import LLMClient
+from maxidom_hack.utils.clients import EmbeddingClient
 from typing import Any
 
 from chromadb import PersistentClient
@@ -9,8 +9,8 @@ from chromadb.errors import NotFoundError
 
 
 class DBLoader:
-    def __init__(self, llm_client: LLMClient, db_path: str = './db/chroma_db', db_name: str= 'products', metric: str = 'cosine'):
-        self.llm_client = llm_client
+    def __init__(self, embed_client: EmbeddingClient, db_path: str = './db/chroma_db', db_name: str= 'products', metric: str = 'cosine'):
+        self.embed_client = embed_client
         self.db_name=db_name
         self.metric=metric
         self.db_client = PersistentClient(path=db_path)
@@ -73,10 +73,10 @@ class DBLoader:
         for i in tqdm(range(0, len(data), batch_size), total=len(data) // batch_size + 1, desc="Обработка батчей"):
             batch = data[i : i + batch_size]
             ids = [str(item["id"]) for item in batch]
-            embeddings = self.llm_client.embed_documents(
+            embeddings = self.embed_client.embed_documents(
                 [self._get_item_text(item) for item in batch],
                 progress_bar=False,
-                prompt='passage: ',
+                prompt='document',
                 batch_size=batch_size,
             )
             
@@ -89,7 +89,6 @@ class DBLoader:
                 metadatas=metadatas,
                 documents=documents,
             )
-            #print(f"Добавлено: {len(batch)} / {len(data)} за {time() - add_t:.2f} секунд")
 
         print(f"Готово. В коллекции: {collection.count()} товаров")
 

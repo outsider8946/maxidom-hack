@@ -16,7 +16,7 @@ from maxidom_hack.llm_client import LLMClient
 from maxidom_hack.db.loader import DBLoader
 
 init_t = time()
-llm_client = LLMClient()
+embed_client = EmbeddingClient()
 print(f'LLMClient initialized in {time() - init_t:.2f} seconds')
 
 db_t = time()
