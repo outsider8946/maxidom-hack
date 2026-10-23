@@ -5,7 +5,7 @@
 
 # Installation:
 
-## Install dependencies for your platform:
+## Install dependencies for your platform
 **Windows/Linux** :
 ```bash
 uv sync --extra frida-torch
