@@ -1,5 +1,7 @@
 """Streamlit UI: выбор типов материалов и подбор товаров из ChromaDB."""
 
+import sys
+import platform
 import pandas as pd
 import streamlit as st
 
@@ -7,7 +9,26 @@ from maxidom_hack.categories import CATEGORIES, label
 from maxidom_hack.db.retriever import ProductRetriever
 from maxidom_hack.utils.clients import EmbeddingClient
 
-DEVICE = "mps"
+
+def detect_device() -> str:
+    # Apple Silicon
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                return "mps"
+        except ImportError:
+            pass
+    # NVIDIA
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "cuda"
+    except ImportError:
+        pass
+    return "cpu"
+
+DEVICE = detect_device()
 COLUMNS = 4
 
 
