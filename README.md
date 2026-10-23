@@ -1,8 +1,11 @@
-# Python 3.11+
+# Dependeices:
+- Python 3.11+
+- uv
 
-## Installation
 
-# Install dependencies for your platform:
+# Installation:
+
+## Install dependencies for your platform:
 **Windows/Linux** :
 ```bash
 uv sync --extra frida-torch
