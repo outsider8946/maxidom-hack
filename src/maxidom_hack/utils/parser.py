@@ -3,7 +3,7 @@
 import re
 from typing import Any
 
-from .utils.models import CatalogProduct
+from .models import CatalogProduct
 
 
 def _number(value: Any) -> float | None:

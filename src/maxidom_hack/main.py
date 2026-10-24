@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 
 from maxidom_hack.calculator import Calculator
-from maxidom_hack.parser import parse_product
+from maxidom_hack.utils.parser import parse_product
 from maxidom_hack.utils.models import EstimateRequest, ProductRequest
 
 app = FastAPI(title="Maxidom calculator")

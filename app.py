@@ -6,7 +6,7 @@ import sys
 import pandas as pd
 import streamlit as st
 
-from maxidom_hack.categories import CATEGORIES, label
+from maxidom_hack.utils.categories import CATEGORIES, label
 from maxidom_hack.db.retriever import ProductRetriever
 from maxidom_hack.utils.clients import EmbeddingClient
 

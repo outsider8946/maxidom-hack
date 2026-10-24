@@ -6,7 +6,7 @@ from typing import Any
 from chromadb import PersistentClient
 from chromadb.errors import NotFoundError
 
-from maxidom_hack.categories import db_categories, query
+from maxidom_hack.utils.categories import db_categories
 from maxidom_hack.utils.clients import EmbeddingClient
 
 # Бада лежит в пакете, поэтому путь считается от модуля, а не от рабочей директории.
@@ -37,6 +37,53 @@ class ProductRetriever:
     @property
     def size(self) -> int:
         return self.collection.count()
+
+    def filter(self, category_keys: list[str]) -> dict[str, list[dict[str, Any]]]:
+        db_to_key: dict[str, str] = {}
+        all_db_cats: list[str] = []
+        for key in category_keys:
+            for db_cat in db_categories(key):
+                db_to_key[db_cat] = key
+                all_db_cats.append(db_cat)
+
+        if not all_db_cats:
+            return {k: [] for k in category_keys}
+
+        # Один $in-запрос к ChromaDB (без эмбеддингов)
+        result = self.collection.get(
+            where={"category": {"$in": all_db_cats}},
+            include=["metadatas", "documents"],
+        )
+        return result
+
+        found: dict[str, list[dict[str, Any]]] = {k: [] for k in category_keys}
+
+        for product_id, metadata, document in zip(
+            result["ids"], result["metadatas"], result["documents"]
+        ):
+            # Отсеиваем товары без price и unit
+            if not metadata.get("price") or not metadata.get("unit"):
+                continue
+
+            db_cat = metadata.get("category", "")
+            key = db_to_key.get(db_cat)
+            if not key:
+                continue
+
+            text = str(document or "")
+            found[key].append({
+                "id": int(product_id),
+                "name": text.split("\n", 1)[0],
+                "description": text.split("\n", 1)[1].strip() if "\n" in text else "",
+                "category": db_cat,
+                "brand": metadata.get("brand", ""),
+                "price": metadata.get("price", 0),
+                "unit": metadata.get("unit", ""),
+                "surface": metadata.get("surface", ""),
+                "moisture_resistant": bool(metadata.get("moisture_resistant", False)),
+            })
+
+        return found
 
     def search(
         self, query: str, top_k: int = 20, where: dict[str, Any] | None = None

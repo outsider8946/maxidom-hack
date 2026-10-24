@@ -2,7 +2,7 @@
 
 from math import ceil
 
-from .coefficients import COEFFICIENTS
+from .utils.coefficients import COEFFICIENTS
 from .utils.models import CatalogProduct, Estimate, LineItem, Room, WorkEstimate
 
 
