@@ -1,7 +1,8 @@
 """Streamlit UI: выбор типов материалов и подбор товаров из ChromaDB."""
 
-import sys
 import platform
+import sys
+
 import pandas as pd
 import streamlit as st
 
@@ -15,6 +16,7 @@ def detect_device() -> str:
     if sys.platform == "darwin" and platform.machine() == "arm64":
         try:
             import torch
+
             if torch.backends.mps.is_available():
                 return "mps"
         except ImportError:
@@ -22,17 +24,20 @@ def detect_device() -> str:
     # NVIDIA
     try:
         import torch
+
         if torch.cuda.is_available():
             return "cuda"
     except ImportError:
         pass
     return "cpu"
 
+
 DEVICE = detect_device()
 COLUMNS = 4
 
 
 # ---------- инициализация RAG один раз на процесс ----------
+
 
 @st.cache_resource(show_spinner="Инициализируем RAG: эмбеддинги и ChromaDB...")
 def init_retriever() -> ProductRetriever | None:
@@ -52,6 +57,7 @@ def init_retriever() -> ProductRetriever | None:
 
 
 # ---------- виджеты ----------
+
 
 def category_buttons() -> list[str]:
     """Toggle-кнопки: клик добавляет/убирает тип из выбора."""
@@ -76,6 +82,7 @@ def category_buttons() -> list[str]:
                 st.rerun()
     return list(selected)
 
+
 def render_selection(selected: list[str]) -> None:
     """Показывает, что именно выбрал пользователь."""
     if not selected:
@@ -83,41 +90,51 @@ def render_selection(selected: list[str]) -> None:
         return
 
     st.markdown(" ".join(f"`{label(c)}`" for c in selected))
-    frame = pd.DataFrame([
-        {
-            "Тип товара": label(c),
-            "Ключ": c,
-            "Категорий в БД": len(CATEGORIES[c]["db_categories"]),
-            "Поисковый запрос": CATEGORIES[c]["query"],
-        }
-        for c in selected
-    ])
+    frame = pd.DataFrame(
+        [
+            {
+                "Тип товара": label(c),
+                "Ключ": c,
+                "Категорий в БД": len(CATEGORIES[c]["db_categories"]),
+                "Поисковый запрос": CATEGORIES[c]["query"],
+            }
+            for c in selected
+        ]
+    )
     st.dataframe(frame, hide_index=True, use_container_width=True)
 
 
-def render_products(retriever: ProductRetriever, selected: list[str], top_k: int) -> None:
+def render_products(
+    retriever: ProductRetriever, selected: list[str], top_k: int
+) -> None:
     """Тянет товары из БД по каждому выбранному типу."""
     with st.status("Ищем товары в ChromaDB...", expanded=False):
         found = {c: retriever.by_category(c, top_k) for c in selected}
 
     for category in selected:
         items = found[category]
-        with st.expander(f"{label(category)} — {len(items)} товаров", expanded=len(selected) == 1):
+        with st.expander(
+            f"{label(category)} — {len(items)} товаров", expanded=len(selected) == 1
+        ):
             if not items:
-                st.warning("Ничего не найдено: проверь `db_categories` в categories.py.")
+                st.warning(
+                    "Ничего не найдено: проверь `db_categories` в categories.py."
+                )
                 continue
-            frame = pd.DataFrame([
-                {
-                    "id": i["id"],
-                    "Товар": i["name"],
-                    "Бренд": i["brand"],
-                    "Цена": i["price"],
-                    "Ед.": i["unit"],
-                    "Категория в БД": i["category"],
-                    "score": i["score"],
-                }
-                for i in items
-            ])
+            frame = pd.DataFrame(
+                [
+                    {
+                        "id": i["id"],
+                        "Товар": i["name"],
+                        "Бренд": i["brand"],
+                        "Цена": i["price"],
+                        "Ед.": i["unit"],
+                        "Категория в БД": i["category"],
+                        "score": i["score"],
+                    }
+                    for i in items
+                ]
+            )
             st.dataframe(frame, hide_index=True, use_container_width=True)
 
 

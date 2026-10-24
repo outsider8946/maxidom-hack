@@ -38,7 +38,9 @@ class ProductRetriever:
     def size(self) -> int:
         return self.collection.count()
 
-    def search(self, query: str, top_k: int = 20, where: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def search(
+        self, query: str, top_k: int = 20, where: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """Возвращает карточки товаров по убыванию релевантности запроса."""
         if not query.strip() or not self.size:
             return []
@@ -57,22 +59,30 @@ class ProductRetriever:
         distances = result.get("distances", [[]])[0]
 
         items = []
-        for product_id, metadata, document, distance in zip(ids, metadatas, documents, distances):
+        for product_id, metadata, document, distance in zip(
+            ids, metadatas, documents, distances
+        ):
             text = str(document or "")
-            items.append({
-                "id": int(product_id),
-                # cosine distance -> similarity
-                "score": round(1 - float(distance), 4),
-                # Название товара — первая строка документа, в метаданных его нет.
-                "name": text.split("\n", 1)[0],
-                "description": text.split("\n", 1)[1].strip() if "\n" in text else "",
-                "category": metadata.get("category", ""),
-                "brand": metadata.get("brand", ""),
-                "price": metadata.get("price", 0),
-                "unit": metadata.get("unit", ""),
-                "surface": metadata.get("surface", ""),
-                "moisture_resistant": bool(metadata.get("moisture_resistant", False)),
-            })
+            items.append(
+                {
+                    "id": int(product_id),
+                    # cosine distance -> similarity
+                    "score": round(1 - float(distance), 4),
+                    # Название товара — первая строка документа, в метаданных его нет.
+                    "name": text.split("\n", 1)[0],
+                    "description": text.split("\n", 1)[1].strip()
+                    if "\n" in text
+                    else "",
+                    "category": metadata.get("category", ""),
+                    "brand": metadata.get("brand", ""),
+                    "price": metadata.get("price", 0),
+                    "unit": metadata.get("unit", ""),
+                    "surface": metadata.get("surface", ""),
+                    "moisture_resistant": bool(
+                        metadata.get("moisture_resistant", False)
+                    ),
+                }
+            )
         return items
 
     def by_category(self, category: str, top_k: int = 10) -> list[dict[str, Any]]:

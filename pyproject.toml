@@ -24,6 +24,12 @@ maxidom-hack = "maxidom_hack:main"
 requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
 
+[dependency-groups]
+dev = [
+    "mypy>=2.4.0",
+    "ruff>=0.17.2",
+]
+
 [project.optional-dependencies]
 # Apple Silicon: MLX, без torch
 frida-mlx = [
@@ -33,3 +39,16 @@ frida-mlx = [
 frida-torch = [
     "frida-decisions[torch] @ git+https://github.com/ai-forever/FRIDA-Decisions@v0.4.0",
 ]
+
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/maxidom_hack", "app.py"]
+mypy_path = "src"
+explicit_package_bases = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+check_untyped_defs = true
+plugins = ["pydantic.mypy"]

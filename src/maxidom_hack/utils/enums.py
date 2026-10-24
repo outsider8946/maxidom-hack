@@ -1,12 +1,12 @@
 class EmbeddingPrompts:
-    QUERY = 'query: '
-    DOCUMENT = 'passage: '
-    VANILLA = ''
+    QUERY = "query: "
+    DOCUMENT = "passage: "
+    VANILLA = ""
 
     _MAP = {
-        'query': QUERY,
-        'document': DOCUMENT,
-        'vanilla': VANILLA,
+        "query": QUERY,
+        "document": DOCUMENT,
+        "vanilla": VANILLA,
     }
 
     @classmethod

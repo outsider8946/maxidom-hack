@@ -1,26 +1,34 @@
 import json
-from tqdm import tqdm
 from time import time
-from maxidom_hack.utils.clients import EmbeddingClient
 from typing import Any
 
 from chromadb import PersistentClient
 from chromadb.errors import NotFoundError
+from tqdm import tqdm
+
+from maxidom_hack.utils.clients import EmbeddingClient
 
 
 class DBLoader:
-    def __init__(self, embed_client: EmbeddingClient, db_path: str = './db/chroma_db', db_name: str= 'products', metric: str = 'cosine'):
+    def __init__(
+        self,
+        embed_client: EmbeddingClient,
+        db_path: str = "./db/chroma_db",
+        db_name: str = "products",
+        metric: str = "cosine",
+    ):
         self.embed_client = embed_client
-        self.db_name=db_name
-        self.metric=metric
+        self.db_name = db_name
+        self.metric = metric
         self.db_client = PersistentClient(path=db_path)
+
     @staticmethod
     def _get_item_text(item: dict[str, Any]) -> str:
         """Формирует текст товара для эмбеддинга."""
         name = item.get("name", "")
-        description = item.get('marketing_description', "")
+        description = item.get("marketing_description", "")
 
-        return f'{name}\n{description}'
+        return f"{name}\n{description}"
 
     @staticmethod
     def _get_metadata(item: dict[str, Any]) -> dict[str, Any]:
@@ -37,7 +45,9 @@ class DBLoader:
         country_name = country.get("name", "") if isinstance(country, dict) else ""
 
         judge = item.get("judge", {})
-        moisture_resistant = judge.get("moisture", False) if isinstance(judge, dict) else False
+        moisture_resistant = (
+            judge.get("moisture", False) if isinstance(judge, dict) else False
+        )
         surface = judge.get("surface", "") if isinstance(judge, dict) else "другое"
 
         return {
@@ -51,7 +61,6 @@ class DBLoader:
             "surface": surface,
             "unit": item.get("unit", "") or "",
         }
-
 
     def _delete(self):
         """Удаляет все данные из коллекции."""
@@ -70,16 +79,20 @@ class DBLoader:
         data = json.load(open(data_path))
         print(f"Полуечно товаров: {len(data)}")
 
-        for i in tqdm(range(0, len(data), batch_size), total=len(data) // batch_size + 1, desc="Обработка батчей"):
+        for i in tqdm(
+            range(0, len(data), batch_size),
+            total=len(data) // batch_size + 1,
+            desc="Обработка батчей",
+        ):
             batch = data[i : i + batch_size]
             ids = [str(item["id"]) for item in batch]
             embeddings = self.embed_client.embed_documents(
                 [self._get_item_text(item) for item in batch],
                 progress_bar=False,
-                prompt='document',
+                prompt="document",
                 batch_size=batch_size,
             )
-            
+
             metadatas = [self._get_metadata(p) for p in batch]
             documents = [self._get_item_text(p) for p in batch]
             add_t = time()
@@ -91,7 +104,6 @@ class DBLoader:
             )
 
         print(f"Готово. В коллекции: {collection.count()} товаров")
-
 
     def delete_and_load(self, data_path: str):
         self._delete()

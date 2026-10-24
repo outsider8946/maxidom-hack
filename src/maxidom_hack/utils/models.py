@@ -1,16 +1,17 @@
 from dataclasses import dataclass, field
-from typing import Optional
+
 from pydantic import BaseModel
 
 # ---------- модели ----------
 
+
 @dataclass
 class Room:
-    length: float          # м
-    width: float           # м
-    height: float = 2.7    # м
-    purpose: str = "living"        # bathroom | kitchen | living | hallway
-    humidity: str = "medium"       # low | medium | high
+    length: float  # м
+    width: float  # м
+    height: float = 2.7  # м
+    purpose: str = "living"  # bathroom | kitchen | living | hallway
+    humidity: str = "medium"  # low | medium | high
     doors: int = 1
     windows: int = 1
     door_area: float = 1.8
@@ -45,11 +46,11 @@ class Room:
 class CatalogProduct:
     id: int
     name: str
-    price: float                  # result_price за упаковку
-    unit: str                     # "упак.", "шт.", "рул."
-    package_area: Optional[float] = None       # м² в упаковке (плитка, ламинат)
-    quantity_in_package: Optional[float] = None  # кг/л/шт в упаковке (клей, краска)
-    consumption_per_m2: Optional[float] = None  # норма расхода (кг/м², л/м²)
+    price: float  # result_price за упаковку
+    unit: str  # "упак.", "шт.", "рул."
+    package_area: float | None = None  # м² в упаковке (плитка, ламинат)
+    quantity_in_package: float | None = None  # кг/л/шт в упаковке (клей, краска)
+    consumption_per_m2: float | None = None  # норма расхода (кг/м², л/м²)
     moisture_resistant: bool = False
     washable: bool = False
     category: str = ""
@@ -63,7 +64,7 @@ class LineItem:
     product_id: int
     name: str
     category: str
-    qty: int              # число упаковок
+    qty: int  # число упаковок
     unit: str
     unit_price: float
     total: float
@@ -72,7 +73,7 @@ class LineItem:
 
 @dataclass
 class WorkEstimate:
-    work: str             # floor_tile | wall_paint | ...
+    work: str  # floor_tile | wall_paint | ...
     area: float
     items: list[LineItem] = field(default_factory=list)
 
@@ -128,17 +129,16 @@ class Estimate:
 
 
 class EstimateRequest(BaseModel):
-	"""Тело запроса для полной сметы помещения."""
+    """Тело запроса для полной сметы помещения."""
 
-	room: Room
-	variant: str = "capital"
+    room: Room
+    variant: str = "capital"
 
 
 class ProductRequest(BaseModel):
-	"""Тело запроса для расчета одного товара из каталога."""
+    """Тело запроса для расчета одного товара из каталога."""
 
-	product_id: int
-	area: float
-	waste: float = 0.05
-	layers: int | None = None
-
+    product_id: int
+    area: float
+    waste: float = 0.05
+    layers: int | None = None
