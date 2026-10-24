@@ -60,6 +60,7 @@ class DBLoader:
             "moisture_resistant": moisture_resistant,
             "surface": surface,
             "unit": item.get("unit", "") or "",
+            'characteristics': item.get("characteristics", {}) or {}
         }
 
     def _delete(self):
