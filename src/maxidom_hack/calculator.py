@@ -96,13 +96,19 @@ class Calculator:
         out = []
         for p in products:
             # Для влажных помещений отсекаем не влагостойкие материалы
-            if room.humidity == "high" and p.category in ("wall_tile", "wall_paint"):
-                if not p.moisture_resistant:
-                    continue
+            if (
+                room.humidity == "high"
+                and p.category in ("wall_tile", "wall_paint")
+                and not p.moisture_resistant
+            ):
+                continue
             # Для кухни отсекаем немоющуюся краску
-            if room.purpose == "kitchen" and p.category == "wall_paint":
-                if not p.washable:
-                    continue
+            if (
+                room.purpose == "kitchen"
+                and p.category == "wall_paint"
+                and not p.washable
+            ):
+                continue
             out.append(p)
         return out
 
@@ -433,14 +439,10 @@ class Calculator:
             glue = self.pick_best([p for p in products if p.category == "tile_glue"])
             grout = self.pick_best([p for p in products if p.category == "tile_grout"])
             est.works.append(
-                self.calc_tiles(
-                    room, products, surface="floor", glue=glue, grout=grout
-                )
+                self.calc_tiles(room, products, surface="floor", glue=glue, grout=grout)
             )
             est.works.append(
-                self.calc_tiles(
-                    room, products, surface="wall", glue=glue, grout=grout
-                )
+                self.calc_tiles(room, products, surface="wall", glue=glue, grout=grout)
             )
         else:
             # В жилых комнатах — ламинат и покраска стен/потолка

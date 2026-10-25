@@ -12,7 +12,7 @@
 # app = FastAPI(title="Maxidom calculator")
 # calculator = Calculator()
 
-#data_path = Path(__file__).resolve().parent / "data" / "products_final.json"
+# data_path = Path(__file__).resolve().parent / "data" / "products_final.json"
 
 
 # def _products():
@@ -40,10 +40,8 @@
 #         selected, request.area, request.waste, request.layers
 #     ).__dict__
 
-
-
 from maxidom_hack.db.loader import DBLoader
 from maxidom_hack.utils.clients import EmbeddingClient
 
 loader = DBLoader(EmbeddingClient())
-loader.delete_and_load('/Users/dolor.src/Downloads/rel_data_annotated.json')
+loader.delete_and_load("/Users/dolor.src/Downloads/rel_data_annotated.json")

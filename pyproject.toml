@@ -53,3 +53,6 @@ warn_redundant_casts = true
 warn_unreachable = true
 check_untyped_defs = true
 plugins = ["pydantic.mypy"]
+
+[tool.ruff]
+exclude = ["notebooks"]

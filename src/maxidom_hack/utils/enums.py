@@ -1,9 +1,14 @@
+"""Эмбеддинг-подсказки для модели multilingual-e5."""
+
+from typing import ClassVar
+
+
 class EmbeddingPrompts:
     QUERY = "query: "
     DOCUMENT = "passage: "
     VANILLA = ""
 
-    _MAP = {
+    _MAP: ClassVar[dict[str, str]] = {
         "query": QUERY,
         "document": DOCUMENT,
         "vanilla": VANILLA,

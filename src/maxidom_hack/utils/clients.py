@@ -14,7 +14,8 @@ load_dotenv()
 
 
 class JudgeClient:
-    def __init__(self, device: Literal["cpu", "gpu", "mps"] = "mps") -> None:
+    # FRIDA Judge принимает torch.device(device) — "cuda" валидно.
+    def __init__(self, device: Literal["cpu", "cuda", "gpu", "mps"] = "mps") -> None:
         self.device = device
         self.judge_model = self._load_judge_model()
 
@@ -59,9 +60,7 @@ class LLMClient:
 
 class EmbeddingClient:
     # "cuda" — реальное имя torch-устройства, которое принимает SentenceTransformer.
-    def __init__(
-        self, device: Literal["cpu", "cuda", "gpu", "mps"] = "mps"
-    ) -> None:
+    def __init__(self, device: Literal["cpu", "cuda", "gpu", "mps"] = "mps") -> None:
         self.device = device
         self.embed_model = self._load_embedding_model()
 

@@ -1,5 +1,4 @@
 import json
-from time import time
 from typing import Any
 
 from chromadb import PersistentClient
@@ -34,10 +33,10 @@ class DBLoader:
     def _get_item_characteristics(item: list[dict[str, str]]):
         characteristics = []
         for characteristic in item:
-            characteristics.append(f"{characteristic['name']}: {characteristic['value']}")
-        return '\n'.join(characteristics)
-
-
+            characteristics.append(
+                f"{characteristic['name']}: {characteristic['value']}"
+            )
+        return "\n".join(characteristics)
 
     def _get_metadata(self, item: dict[str, Any]) -> dict[str, Any]:
         """Get metadata from a product item."""
@@ -61,7 +60,7 @@ class DBLoader:
         if characteristics_item:
             characteristics = self._get_item_characteristics(characteristics_item)
         else:
-            characteristics = ''
+            characteristics = ""
 
         return {
             "product_id": item["id"],
@@ -90,7 +89,8 @@ class DBLoader:
             metadata={"hnsw:space": self.metric},
         )
 
-        data = json.load(open(data_path))
+        with open(data_path, encoding="utf-8") as f:
+            data = json.load(f)
         print(f"Полуечно товаров: {len(data)}")
 
         for i in tqdm(

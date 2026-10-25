@@ -22,19 +22,19 @@ class Matcher:
 
     def format_reqeust(self, item: dict[str, Any]) -> dict[str, Any]:
         """Format the request for the judge model."""
-        name = item["name"]
-        description = item["marketing_description"]
+        name = item.get("name", "")
+        description = item.get("marketing_description", "")
         features_list = []
-        for feature in item["characteristics"]:
-            feature_name = feature["name"]
-            feature_value = feature["value"]
-            if "описание" in feature_name:  # skip marketing description features
+        for feature in item.get("characteristics", []):
+            feature_name = str(feature.get("name", ""))
+            feature_value = feature.get("value", "")
+            if "описание" in feature_name:
                 continue
             features_list.append(f"{feature_name}: {feature_value}")
         features = "\n".join(features_list)
         state = (
             f"Название товара: {name}\n"
-            f"Описание товара: {description}"
+            f"Описание товара: {description}\n"
             f"Характеристики товара:\n{features}"
         )
         return {

@@ -108,13 +108,11 @@ class ProductRetriever:
 
     def by_category(self, category: str) -> list[dict[str, Any]]:
         """Ищет товары одного типа калькулятора: запрос + фильтр по метаданным."""
-        return self.filter(
-            db_categories(category)
-        )
+        return self.filter(db_categories(category))
 
     def available(self) -> bool:
         """Проверяет, что коллекция инициализирована и не пуста."""
         try:
             return self.collection.count() > 0
-        except (NotFoundError, Exception):
+        except NotFoundError:
             return False
