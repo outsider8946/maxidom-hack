@@ -6,7 +6,7 @@ from typing import Any
 from chromadb import PersistentClient
 from chromadb.errors import NotFoundError
 
-from maxidom_hack.categories import db_categories, query
+from maxidom_hack.utils.categories import db_categories
 from maxidom_hack.utils.clients import EmbeddingClient
 
 # Бада лежит в пакете, поэтому путь считается от модуля, а не от рабочей директории.
@@ -37,6 +37,27 @@ class ProductRetriever:
     @property
     def size(self) -> int:
         return self.collection.count()
+
+    def filter(self, category_keys: list[str], limit: int | None = None) -> Any:
+        """Возвращает сырой ответ ChromaDB по списку категорий калькулятора.
+
+        ``limit`` ограничивает выборку, чтобы не читать всю категорию целиком.
+        """
+        db_to_key: dict[str, str] = {}
+        all_db_cats: list[str] = []
+        for key in category_keys:
+            for db_cat in db_categories(key):
+                db_to_key[db_cat] = key
+                all_db_cats.append(db_cat)
+
+        if not all_db_cats:
+            return {"ids": [], "metadatas": [], "documents": []}
+
+        return self.collection.get(
+            where={"category": {"$in": all_db_cats}},
+            include=["metadatas", "documents"],
+            limit=limit,
+        )
 
     def search(
         self, query: str, top_k: int = 20, where: dict[str, Any] | None = None
@@ -85,12 +106,10 @@ class ProductRetriever:
             )
         return items
 
-    def by_category(self, category: str, top_k: int = 10) -> list[dict[str, Any]]:
+    def by_category(self, category: str) -> list[dict[str, Any]]:
         """Ищет товары одного типа калькулятора: запрос + фильтр по метаданным."""
-        return self.search(
-            query(category),
-            top_k=top_k,
-            where={"category": {"$in": db_categories(category)}},
+        return self.filter(
+            db_categories(category)
         )
 
     def available(self) -> bool:

@@ -58,7 +58,10 @@ class LLMClient:
 
 
 class EmbeddingClient:
-    def __init__(self, device: Literal["cpu", "gpu", "mps"] = "mps") -> None:
+    # "cuda" — реальное имя torch-устройства, которое принимает SentenceTransformer.
+    def __init__(
+        self, device: Literal["cpu", "cuda", "gpu", "mps"] = "mps"
+    ) -> None:
         self.device = device
         self.embed_model = self._load_embedding_model()
 

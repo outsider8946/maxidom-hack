@@ -2,7 +2,7 @@
 
 from math import ceil
 
-from .coefficients import COEFFICIENTS
+from .utils.coefficients import COEFFICIENTS
 from .utils.models import CatalogProduct, Estimate, LineItem, Room, WorkEstimate
 
 
@@ -428,8 +428,20 @@ class Calculator:
         # Капитальный ремонт.
         if room.purpose in ("bathroom", "kitchen"):
             # В санузле и на кухне — плитка на пол и стены
-            est.works.append(self.calc_tiles(room, products, surface="floor"))
-            est.works.append(self.calc_tiles(room, products, surface="wall"))
+            # Клей и затирка считаются вместе с плиткой: без явной передачи
+            # calc_tiles не добавляет их в смету вовсе.
+            glue = self.pick_best([p for p in products if p.category == "tile_glue"])
+            grout = self.pick_best([p for p in products if p.category == "tile_grout"])
+            est.works.append(
+                self.calc_tiles(
+                    room, products, surface="floor", glue=glue, grout=grout
+                )
+            )
+            est.works.append(
+                self.calc_tiles(
+                    room, products, surface="wall", glue=glue, grout=grout
+                )
+            )
         else:
             # В жилых комнатах — ламинат и покраска стен/потолка
             est.works.append(self.calc_laminate(room, products))
