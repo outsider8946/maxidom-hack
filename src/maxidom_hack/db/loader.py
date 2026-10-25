@@ -13,7 +13,7 @@ class DBLoader:
     def __init__(
         self,
         embed_client: EmbeddingClient,
-        db_path: str = "./db/chroma_db",
+        db_path: str = "./src/maxidom_hack/db/chroma_db",
         db_name: str = "products",
         metric: str = "cosine",
     ):
@@ -31,7 +31,15 @@ class DBLoader:
         return f"{name}\n{description}"
 
     @staticmethod
-    def _get_metadata(item: dict[str, Any]) -> dict[str, Any]:
+    def _get_item_characteristics(item: list[dict[str, str]]):
+        characteristics = []
+        for characteristic in item:
+            characteristics.append(f"{characteristic['name']}: {characteristic['value']}")
+        return '\n'.join(characteristics)
+
+
+
+    def _get_metadata(self, item: dict[str, Any]) -> dict[str, Any]:
         """Get metadata from a product item."""
         categories = item.get("categories", {})
         category = ""
@@ -49,6 +57,11 @@ class DBLoader:
             judge.get("moisture", False) if isinstance(judge, dict) else False
         )
         surface = judge.get("surface", "") if isinstance(judge, dict) else "другое"
+        characteristics_item = item.get("characteristics", [])
+        if characteristics_item:
+            characteristics = self._get_item_characteristics(characteristics_item)
+        else:
+            characteristics = ''
 
         return {
             "product_id": item["id"],
@@ -60,7 +73,7 @@ class DBLoader:
             "moisture_resistant": moisture_resistant,
             "surface": surface,
             "unit": item.get("unit", "") or "",
-            'characteristics': item.get("characteristics", {}) or {}
+            "characteristics": characteristics,
         }
 
     def _delete(self):
@@ -96,7 +109,6 @@ class DBLoader:
 
             metadatas = [self._get_metadata(p) for p in batch]
             documents = [self._get_item_text(p) for p in batch]
-            add_t = time()
             collection.add(
                 ids=ids,
                 embeddings=embeddings,
