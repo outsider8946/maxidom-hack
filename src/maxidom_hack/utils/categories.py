@@ -127,4 +127,4 @@ def label(category: str) -> str:
 
 def db_categories(category: str) -> list[str]:
     """Значения метаданного ``category`` в ChromaDB для типа товара."""
-    return list(CATEGORIES.get(category, {}).get("db_categories", []))
+    return list(CATEGORIES.get(category, {}).get("db_categories", []))  # type: ignore[call-overload]

@@ -112,7 +112,7 @@ class DBLoader:
             collection.add(
                 ids=ids,
                 embeddings=embeddings,
-                metadatas=metadatas,
+                metadatas=metadatas,  # type: ignore[arg-type]
                 documents=documents,
             )
 

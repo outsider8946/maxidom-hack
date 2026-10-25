@@ -37,7 +37,7 @@ class Calculator:
             # Берем расход из карточки товара, если нет — из справочника
             consumption = product.consumption_per_m2 or COEFFICIENTS[
                 "default_consumption"
-            ].get(product.category, 0)
+            ].get(product.category, 0)  # type: ignore[attr-defined]
             package_quantity = product.quantity_in_package or 0
 
             # Для краски учитываем количество слоев, для остального — 1 слой
@@ -48,7 +48,7 @@ class Calculator:
             )
 
             # Формула: Общий_расход = Площадь * Расход_на_м2 * Слои
-            needed = area * consumption * actual_layers
+            needed = area * consumption * actual_layers  # type: ignore[operator]
 
             # Формула: Упаковки = Общий_расход / Объем_упаковки (округляем вверх)
             qty = ceil(needed / package_quantity) if package_quantity else 0
@@ -146,7 +146,7 @@ class Calculator:
         """Рассчитывает плитку для пола или стен, а также сопутствующий клей и затирку."""
         area = room.floor_area if surface == "floor" else room.wall_area
         # Берем запас из справочника: 5% для прямой укладки (по умолчанию)
-        waste = COEFFICIENTS["tile_waste"]["straight"] if waste is None else waste
+        waste = COEFFICIENTS["tile_waste"]["straight"] if waste is None else waste  # type: ignore[index]
         category = "floor_tile" if surface == "floor" else "wall_tile"
 
         tile = self.pick_best(
@@ -255,9 +255,9 @@ class Calculator:
         area = room.wall_area if surface == "wall" else room.ceiling_area
 
         # Краска: (Площадь * Слои) / Расход(м2/л) = Литры
-        layers = layers or COEFFICIENTS["paint_layers"]
+        layers = layers or COEFFICIENTS["paint_layers"]  # type: ignore[assignment]
         coverage_per_liter = (
-            coverage_per_liter or COEFFICIENTS["default_consumption"]["wall_paint"]
+            coverage_per_liter or COEFFICIENTS["default_consumption"]["wall_paint"]  # type: ignore[index]
         )
         paint = self.pick_best(
             [
@@ -269,7 +269,7 @@ class Calculator:
         we = WorkEstimate(work=f"{surface}_paint", area=area)
         if not paint or not paint.quantity_in_package:
             return we
-        liters = area * layers / coverage_per_liter
+        liters = area * layers / coverage_per_liter  # type: ignore[operator]
 
         # Упаковки: Литры / Объем_банки
         qty = ceil(liters / paint.quantity_in_package)
