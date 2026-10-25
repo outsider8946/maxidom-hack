@@ -35,7 +35,7 @@ class ProductParser:
             return None
         match = self.number_re.search(str(value).replace(" ", ""))
         return float(match.group().replace(",", ".")) if match else None
-    
+
     def _characteristics(self, raw_str: str) -> dict[str, str]:
         """Разбирает блок характеристик «имя: значение» в словарь нижним регистром.
 
@@ -53,7 +53,6 @@ class ProductParser:
             result[name] = value.strip()
         return result
 
-
     def _category(self, raw: str) -> str:
         """Переводит название категории каталога во внутреннюю категорию калькулятора."""
         text = str(raw).lower()
@@ -65,7 +64,6 @@ class ProductParser:
                 return "wall_tile"
             return "floor_tile"
         return str(raw)
-
 
     def parse_product(self, meta: dict[str, Any], doc: str) -> CatalogProduct:
         """Преобразует одну запись датасета в нормализованную модель товара.
@@ -87,7 +85,11 @@ class ProductParser:
             None,
         )
         package_area = next(
-            (self._number(value) for key, value in characteristics.items() if "площад" in key),
+            (
+                self._number(value)
+                for key, value in characteristics.items()
+                if "площад" in key
+            ),
             None,
         )
         area_match = re.search(r"(\d+[.,]\d*)\s*м2", name, re.IGNORECASE)
@@ -96,7 +98,11 @@ class ProductParser:
             self._number(area_match.group(1)) if area_match else None
         )
         consumption = next(
-            (self._number(value) for key, value in characteristics.items() if "расход" in key),
+            (
+                self._number(value)
+                for key, value in characteristics.items()
+                if "расход" in key
+            ),
             None,
         )
         if consumption is None:
@@ -105,7 +111,7 @@ class ProductParser:
                 r"(\d+[.,]?\d*)\s*(?:гр|г|кг|л)\s*/\s*м[²2]", description, re.IGNORECASE
             )
             consumption = self._number(match.group(1)) if match else None
-        
+
         moisture = bool(meta.get("moisture_resistant", False))
         washable = any(
             "моющ" in key and str(value).lower() in ("да", "true", "1")
@@ -121,5 +127,5 @@ class ProductParser:
             consumption_per_m2=consumption,
             moisture_resistant=moisture,
             washable=washable,
-            category=self._category(meta['category']),
+            category=self._category(meta["category"]),
         )

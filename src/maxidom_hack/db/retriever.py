@@ -54,7 +54,7 @@ class ProductRetriever:
             return {"ids": [], "metadatas": [], "documents": []}
 
         return self.collection.get(
-            where={"category": {"$in": all_db_cats}},
+            where={"category": {"$in": all_db_cats}},  # type: ignore[dict-item]
             include=["metadatas", "documents"],
             limit=limit,
         )
@@ -74,10 +74,10 @@ class ProductRetriever:
             include=["metadatas", "documents", "distances"],
         )
 
-        ids = result.get("ids", [[]])[0]
-        metadatas = result.get("metadatas", [[]])[0]
-        documents = result.get("documents", [[]])[0]
-        distances = result.get("distances", [[]])[0]
+        ids = (result.get("ids") or [[]])[0]
+        metadatas = (result.get("metadatas") or [[]])[0]
+        documents = (result.get("documents") or [[]])[0]
+        distances = (result.get("distances") or [[]])[0]
 
         items = []
         for product_id, metadata, document, distance in zip(
@@ -108,13 +108,11 @@ class ProductRetriever:
 
     def by_category(self, category: str) -> list[dict[str, Any]]:
         """Ищет товары одного типа калькулятора: запрос + фильтр по метаданным."""
-        return self.filter(
-            db_categories(category)
-        )
+        return self.filter(db_categories(category))
 
     def available(self) -> bool:
         """Проверяет, что коллекция инициализирована и не пуста."""
         try:
             return self.collection.count() > 0
-        except (NotFoundError, Exception):
+        except NotFoundError:
             return False
