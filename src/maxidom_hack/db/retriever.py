@@ -59,6 +59,38 @@ class ProductRetriever:
             limit=limit,
         )
 
+    def search_raw(
+        self, query: str, category_keys: list[str], limit: int = 3
+    ) -> dict[str, list[Any]]:
+        """Результат ChromaDB, упорядоченный по релевантности текстовому запросу.
+
+        Нужен, чтобы текстовые пожелания пользователя уточняли выбор внутри
+        категории: ``filter`` выдаёт товары в произвольном порядке. Форма
+        ответа совпадает с ``filter``, чтобы обработчику были безразличны
+        два способа выборки.
+        """
+        all_db_cats: list[str] = []
+        for key in category_keys:
+            all_db_cats.extend(db_categories(key))
+
+        empty: dict[str, list[Any]] = {"ids": [], "metadatas": [], "documents": []}
+        if not query.strip() or not all_db_cats or not self.size:
+            return empty
+
+        embedding = self.embed_client.embed_query(query).tolist()
+        result = self.collection.query(
+            query_embeddings=[embedding],
+            n_results=min(limit, self.size),
+            where={"category": {"$in": all_db_cats}},  # type: ignore[dict-item]
+            include=["metadatas", "documents"],
+        )
+        # query отдаёт по одному списку на запрос: берём нулевую строку.
+        return {
+            "ids": (result.get("ids") or [[]]),
+            "metadatas": (result.get("metadatas") or [[]]),
+            "documents": (result.get("documents") or [[]]),
+        }
+
     def search(
         self, query: str, top_k: int = 20, where: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:

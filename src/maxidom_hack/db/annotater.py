@@ -20,8 +20,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
 from tqdm.asyncio import tqdm as tqdm_asyncio
 
+from maxidom_hack.db.patterns import CategoryRules, PatternRules
 from maxidom_hack.utils.clients import JudgeClient
-from maxidom_hack.db.patterns import PatternRules, CategoryRules
+
 
 class DBAnnotater:
     def __init__(
@@ -99,9 +100,9 @@ class DBAnnotater:
         if ask_moisture:
             questions["moisture_resistant"] = {
                 "type": "noul",
-                "instructions": "Предназначен ли товар для помещений с высокой влажностью?",
+                "instructions": "Предназначен ли товар для помещений с высокой влажностью или для канализации/водонапорных труб?",
                 "criteria": {
-                    "true":  "влагостойкий ГКЛВ, влагостойкая краска, гидроизоляция, плитка для санузла, затирка на цементной основе",
+                    "true":  "влагостойкий ГКЛВ, влагостойкая краска, гидроизоляция, плитка для санузла, затирка на цементной основе, материал из нержавеющей стали",
                     "false": "обычные материалы без специальных влагостойких свойств",
                 },
             }
@@ -229,25 +230,25 @@ class DBAnnotater:
                 self.get_choice_clf_request(relevant_data[i], ask_surface=True, ask_moisture=True)
                 for i in both
             ]
-            tasks.append(self._aclf(reqs, ask_surface=True, ask_moisture=True))
-            plan.append(("both", both))
+            tasks.extend([self._aclf([req], ask_surface=True, ask_moisture=True) for req in reqs])
+            plan.extend([("both", both) for _ in reqs])
         if surface_only:
             reqs = [
                 self.get_choice_clf_request(relevant_data[i], ask_surface=True, ask_moisture=False)
                 for i in surface_only
             ]
-            tasks.append(self._aclf(reqs, ask_surface=True, ask_moisture=False))
-            plan.append(("surface_only", surface_only))
+            tasks.extend([self._aclf([req], ask_surface=True, ask_moisture=False) for req in reqs])
+            plan.extend([("surface_only", surface_only) for _ in reqs])
         if moisture_only:
             reqs = [
                 self.get_choice_clf_request(relevant_data[i], ask_surface=False, ask_moisture=True)
                 for i in moisture_only
             ]
-            tasks.append(self._aclf(reqs, ask_surface=False, ask_moisture=True))
-            plan.append(("moisture_only", moisture_only))
+            tasks.extend([self._aclf([req], ask_surface=False, ask_moisture=True) for req in reqs])
+            plan.extend([("moisture_only", moisture_only) for _ in reqs])
 
         if tasks:
-            results = await asyncio.gather(*tasks)
+            results = await tqdm_asyncio.gather(*tasks, desc='Classifying...')
             for (kind, indices), out in zip(plan, results):
                 for idx, res in zip(indices, out):
                     if "surface" in res:
@@ -299,7 +300,7 @@ class DBAnnotater:
         llm_result: dict[str, str] = {}
         if cats_to_ask:
             requests_batch = self._get_filter_requests_batch(data, cats_to_ask)
-            tasks = [self._afilter(batch) for batch in requests_batch]
+            tasks = [self._afilter([batch]) for batch in requests_batch]
             results = await tqdm_asyncio.gather(*tasks, desc="Filtering categories...")
             flatten = [item for sublist in results for item in sublist]
             llm_result = {str(cat): label for cat, label in zip(cats_to_ask, flatten)}
@@ -314,9 +315,11 @@ class DBAnnotater:
         return {**pattern_result, **llm_result}
 
 
-    def annotate(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    async def annotate_async(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Асинхронная версия annotate — для вызова из Jupyter/async-контекста."""
         if not self.relevant_cateogires:
-            self.relevant_cateogires = asyncio.run(self._set_relevant_categories(data))
+            print("Setting relevant categories")
+            self.relevant_cateogires = await self._set_relevant_categories(data)
 
         relevant_data = []
         for item in data:
@@ -329,10 +332,15 @@ class DBAnnotater:
                 or self.relevant_cateogires[cat] == "excluded"
             ):
                 continue
-            if not item.get('unit', '') or not item.get('price', 0):
+            if not item.get("unit", "") or not item.get("price", 0):
                 continue
             relevant_data.append(item)
 
-        print(f'Skipped: {len(data) - len(relevant_data)}/{len(data)} items')
+        print(f"Skipped: {len(data) - len(relevant_data)}/{len(data)} items")
 
-        return asyncio.run(self._aclassify(relevant_data))
+        return await self._aclassify(relevant_data)
+
+
+    def annotate(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Синхронная обёртка — только для скриптов, не для Jupyter."""
+        return asyncio.run(self.annotate_async(data))
