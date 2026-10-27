@@ -62,8 +62,8 @@ class Matcher:
             },
         }
 
-    def match(self, item: dict[str, Any]) -> dict[str, Any]:
+    async def match(self, item: dict[str, Any]) -> dict[str, Any]:
         """Match a product item using the JudgeClient."""
         request = self.format_reqeust(item)
-        clf_result = self.judge_client.judge(request)
+        clf_result = await self.judge_client.judge(request)
         return self.parse_result(clf_result)

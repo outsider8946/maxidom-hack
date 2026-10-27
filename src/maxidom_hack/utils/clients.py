@@ -4,7 +4,7 @@ from typing import Any, Literal
 import numpy as np
 import torch
 from dotenv import load_dotenv
-from frida_decisions import Judge
+from frida_decisions import AsyncJudge
 from ollama import Client
 from sentence_transformers import SentenceTransformer
 
@@ -19,16 +19,18 @@ class JudgeClient:
         self.device = device
         self.judge_model = self._load_judge_model()
 
-    def _load_judge_model(self) -> Judge:
+    def _load_judge_model(self) -> AsyncJudge:
         """Load the judge model."""
-        return Judge.from_pretrained(
+        return AsyncJudge.from_pretrained(
             "ai-forever/FRIDA-Decisions",
             device=self.device,
         )
 
-    def judge(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Evaluate the text using the judge model."""
-        return self.judge_model(request)
+    async def judge_batch(self, requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return await self.judge_model.judge_batch(requests)
+
+    async def judge(self, request: dict[str, Any]) -> dict[str, Any]:
+        return await self.judge_model.judge(request)
 
 
 class LLMClient:
