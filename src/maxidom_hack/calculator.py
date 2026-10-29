@@ -189,8 +189,10 @@ class Calculator:
             )
 
         # Затирка: Площадь * Норма_расхода / Вес_упаковки
-        if grout and grout.consumption_per_m2 and grout.quantity_in_package:
-            kg = area * grout.consumption_per_m2
+        if grout and grout.quantity_in_package:
+            # используем дефолтное значение, если в карточке пусто
+            grout_consumption = grout.consumption_per_m2 or COEFFICIENTS["default_consumption"].get("tile_grout", 1.5)
+            kg = area * grout_consumption
             q = ceil(kg / grout.quantity_in_package)
             we.items.append(
                 LineItem(
@@ -201,7 +203,7 @@ class Calculator:
                     unit=grout.unit,
                     unit_price=grout.price,
                     total=q * grout.price,
-                    reason=f"Площадь {area:g} м² × норма {grout.consumption_per_m2} кг/м² ÷ {grout.quantity_in_package} кг (упаковка) = {q} шт.",
+                    reason=f"Площадь {area:g} м² × норма {grout_consumption} кг/м² ÷ {grout.quantity_in_package} кг = {q} шт.",
                 )
             )
         return we
