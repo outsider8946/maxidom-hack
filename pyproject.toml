@@ -18,6 +18,7 @@ dependencies = [
     "sentence-transformers>=5.1.2",
     "streamlit>=1.66.1",
     "torchvision>=0.29.1",
+    "torch>=2.14",
 ]
 
 [project.scripts]
@@ -43,7 +44,6 @@ frida-torch = [
     "frida-decisions[torch] @ git+https://github.com/ai-forever/FRIDA-Decisions@v0.4.0",
 ]
 
-
 [tool.mypy]
 python_version = "3.11"
 files = ["src/maxidom_hack", "app.py"]
@@ -58,3 +58,16 @@ plugins = ["pydantic.mypy"]
 
 [tool.ruff]
 exclude = ["notebooks"]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cuda", marker = "sys_platform == 'win32'" },
+]
+torchvision = [
+    { index = "pytorch-cuda", marker = "sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true

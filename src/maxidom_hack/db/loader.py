@@ -1,6 +1,6 @@
 import json
 from typing import Any
-
+from pathlib import Path
 from chromadb import PersistentClient
 from chromadb.errors import NotFoundError
 from tqdm import tqdm
@@ -12,7 +12,9 @@ class DBLoader:
     def __init__(
         self,
         embed_client: EmbeddingClient,
-        db_path: str = "./src/maxidom_hack/db/chroma_db",
+        # db_path: str = "./src/maxidom_hack/db/chroma_db",
+        # ИСПРАВЛЕНО: теперь путь всегда будет указывать на папку рядом с loader.py
+        db_path: str = str(Path(__file__).resolve().parent / "chroma_db"), 
         db_name: str = "products",
         metric: str = "cosine",
     ):

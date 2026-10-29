@@ -406,8 +406,14 @@ def pick_products(
             found = retriever.search_raw(wish, [category], limit=limit)
         else:
             found = retriever.filter([category], limit=limit)
-        metadatas = found.get("metadatas") or []
-        documents = found.get("documents") or []
+
+        # metadatas = found.get("metadatas") or [] ИСПРАВИЛ - Иначе AttributeError: 'list' object has no attribute 'get
+        raw_metadatas = found.get("metadatas") or [[]]
+        metadatas = raw_metadatas[0] if raw_metadatas and isinstance(raw_metadatas[0], list) else raw_metadatas
+        
+        # documents = found.get("documents") or []
+        raw_documents = found.get("documents") or [[]]
+        documents = raw_documents[0] if raw_documents and isinstance(raw_documents[0], list) else raw_documents
 
         product = None
         for meta, doc in zip(metadatas, documents):
