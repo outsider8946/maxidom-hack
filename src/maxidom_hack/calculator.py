@@ -386,9 +386,16 @@ class Calculator:
             if not p:
                 return
 
-            # ИСПРАВЛЕНО: всегда используем ceil для округления вверх
-            # int(qty) обрезает дробь вниз (например, 2.9 станет 2), а нам нужно округление вверх (ceil).
-            final_qty = ceil(qty)
+            # Считаем количество упаковок. 
+            # Если у товара есть метраж/объем упаковки (например, 5 м), делим на него.
+            # Для розеток и выключателей quantity_in_package = None, поэтому делим на 1.
+            package_len = p.quantity_in_package or 1.0 
+            final_qty = ceil(qty / package_len)
+
+            # Формируем красивую причину для сметы
+            reason_text = reason
+            if p.quantity_in_package:
+                reason_text += f". Нужно {qty:g} м. В упаковке {package_len:g} м. Итого: {final_qty} шт."
 
             items.append(
                 LineItem(
@@ -399,7 +406,7 @@ class Calculator:
                     unit=p.unit,
                     unit_price=p.price,
                     total=final_qty * p.price,
-                    reason=reason,
+                    reason=reason_text,
                 )
             )
 
