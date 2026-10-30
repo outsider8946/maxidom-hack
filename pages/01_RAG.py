@@ -13,6 +13,9 @@ from maxidom_hack.utils.devices import detect_device
 from maxidom_hack.utils.models import CatalogProduct, Room
 from maxidom_hack.utils.parser import ProductParser
 
+from maxidom_hack.utils.llm_filter import select_best_product
+from maxidom_hack.utils.clients import LLMClient
+
 DEVICE = detect_device()
 
 PURPOSES = {
@@ -82,6 +85,9 @@ STAGE_VARIANT = Stage(
     hint="Набор следующих шагов зависит от этого выбора. Пропуск = капитальный.",
 )
 
+@st.cache_resource(show_spinner="Инициализируем LLM...")
+def init_llm() -> LLMClient:
+    return LLMClient()
 
 def option(
     value: str, title: str, adds: tuple[str, ...]
@@ -387,54 +393,58 @@ def pick_products(
     parser: ProductParser,
     wishes: dict[str, str],
     limit: int = 20,
-) -> tuple[list[tuple[str, CatalogProduct]], list[str]]:
-    """Подбирает по одному товару на категорию с учётом текстовых пожеланий.
-
-    С пожеланиями товары ранжируются семантическим поиском, без них — берутся
-    из категории в произвольном порядке. Первый товар без цены или единицы
-    измерения пропускается: калькулятор не сможет посчитать ни упаковки, ни
-    стоимость.
-
-    Returns:
-        ``([(категория, товар)], [проблемы])``.
-    """
+    use_llm: bool = False,
+    llm: LLMClient | None = None,
+) -> tuple[list[tuple[str, CatalogProduct]], list[str], dict[str, str]]: # <-- Добавили dict
+    
     picked: list[tuple[str, CatalogProduct]] = []
     problems: list[str] = []
+    llm_reasons: dict[str, str] = {} # <-- Сюда будем складывать причины
 
     for category, wish in wishes.items():
         if wish:
-            found = retriever.search_raw(wish, [category], limit=limit)
+            found = retriever.search_raw(wish, [category], limit=5)
         else:
-            found = retriever.filter([category], limit=limit)
-
-        # metadatas = found.get("metadatas") or [] ИСПРАВИЛ - Иначе AttributeError: 'list' object has no attribute 'get
+            found = retriever.filter([category], limit=5)
+            
         raw_metadatas = found.get("metadatas") or [[]]
         metadatas = raw_metadatas[0] if raw_metadatas and isinstance(raw_metadatas[0], list) else raw_metadatas
-        
-        # documents = found.get("documents") or []
         raw_documents = found.get("documents") or [[]]
         documents = raw_documents[0] if raw_documents and isinstance(raw_documents[0], list) else raw_documents
 
-        product = None
+        if not metadatas or not documents:
+            problems.append(f"{label(category)}: ничего не найдено")
+            continue
+
+        candidates = []
         for meta, doc in zip(metadatas, documents):
             if not meta.get("price") or not meta.get("unit"):
                 continue
-            try:
-                product = parser.parse_product(meta, doc)
-            except Exception as exc:  # noqa: BLE001 - битая карточка не роняет смету
-                problems.append(
-                    f"{label(category)}: парсер не разобрал карточку — "
-                    f"{type(exc).__name__}: {exc}"
-                )
-                break
-            break
+            candidates.append({
+                "id": meta.get("product_id"),
+                "name": doc.split("\n")[0],
+                "description": doc.split("\n")[1] if "\n" in doc else "",
+                "price": meta.get("price"),
+                "unit": meta.get("unit"),
+                "meta": meta,
+                "doc": doc
+            })
 
-        if product is not None:
-            picked.append((category, product))
+        if not candidates:
+            problems.append(f"{label(category)}: нет валидных карточек")
+            continue
+
+        if use_llm and llm and wish:
+            best = select_best_product(llm, wish, candidates)
+            product = parser.parse_product(best["meta"], best["doc"])
+            # Сохраняем причину
+            llm_reasons[label(category)] = best.get("llm_reason", "")
         else:
-            problems.append(f"{label(category)}: подходящая карточка не найдена")
+            product = parser.parse_product(candidates[0]["meta"], candidates[0]["doc"])
 
-    return picked, problems
+        picked.append((category, product))
+
+    return picked, problems, llm_reasons
 
 
 def render_wishes(wishes: dict[str, str]) -> None:
@@ -481,6 +491,21 @@ def render_parsed(picked: list[tuple[str, CatalogProduct]]) -> None:
             + ", ".join(unknown)
         )
 
+def render_llm_reasons(llm_reasons: dict[str, str]) -> None:
+    """Отображает отдельный бар с обоснованием выбора от LLM."""
+    if not llm_reasons:
+        return
+        
+    st.subheader("Обоснование от LLM")
+    for category, reason in llm_reasons.items():
+        # Если причина пустая, вообще не выводим эту плашку
+        if not reason or not str(reason).strip():
+            continue 
+            
+        if "нет подходящего" in reason.lower() or "не подходит" in reason.lower() or "⚠️" in reason:
+            st.warning(f"**{category}**: {reason}")
+        else:
+            st.info(f"**{category}**: {reason}")
 
 def render_estimate(estimate: dict, picked: list[tuple[str, CatalogProduct]]) -> None:
     """Выводит смету: итог, разбивку по работам и непопавшие в неё типы."""
@@ -578,6 +603,9 @@ with st.sidebar:
         f"Периметр: {room.perimeter:.1f} м"
     )
 
+    st.header("Настройки")
+    use_llm = st.toggle("Использовать LLM для выбора", value=False, help="Qwen3-4B выберет лучший товар из топ-3 и объяснит выбор.")
+
 st.title("Поэтапный подбор материалов")
 st.caption(
     "На каждом шаге выбирается один вариант или шаг пропускается. "
@@ -650,13 +678,24 @@ else:
     render_wishes(selection)
 
     with st.status("Подбираю товары и считаю смету...", expanded=False):
-        picked, problems = pick_products(retriever, parser, selection)
+        picked, problems, llm_reasons = pick_products(
+            retriever, 
+            parser, 
+            selection, 
+            use_llm=use_llm, 
+            llm=init_llm() if use_llm else None
+        )
         estimate = calculator.calc_estimate(
             room, variant, [product for _, product in picked]
         ).to_dict()
 
     for problem in problems:
         st.warning(problem)
+
+    # === БЕЗОПАСНЫЙ ВЫВОД ОБОСНОВАНИЙ ===
+    # Если LLM выключена, llm_reasons будет пустым, и функция просто завершится
+    render_llm_reasons(llm_reasons)
+    # ===================================
 
     st.subheader("Товары из базы")
     render_parsed(picked)
