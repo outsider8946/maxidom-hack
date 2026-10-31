@@ -87,38 +87,31 @@ def _init_matcher() -> Matcher:
 def _run_match(
     matcher: Matcher, items: list[dict[str, Any]], threshold: float
 ) -> list[dict[str, Any]]:
-    """Прогоняет список товаров через judge, собирает результаты."""
+    """Прогоняет список товаров через matcher (регулярки + judge)."""
     results: list[dict[str, Any]] = []
     for item in items:
         try:
-            request = matcher.format_reqeust(item)
-            raw = matcher.judge_client.judge(request)
-            parsed = matcher.parse_result(raw, threshold)
+            # Используем наш новый синхронный метод!
+            parsed = matcher.match_sync(item, threshold)
             results.append(
                 {
                     "name": item.get("name", ""),
                     "surface": parsed["surface"],
+                    "surface_source": parsed.get("surface_source"),
                     "moisture_resistant": parsed["moisture_resistant"],
-                    "noul_score": raw.get("answers", {})
-                    .get("moisture_resistant", {})
-                    .get("noul", None),
+                    "moisture_source": parsed.get("moisture_source"),
                     "status": "ok",
-                    "raw": raw,
-                    "state": request.get("state", ""),
+                    "raw": parsed.get("raw_model_response"),
+                    "state": f"Регулярки: surface={parsed.get('surface_source')}, moisture={parsed.get('moisture_source')}"
                 }
             )
-        except Exception as exc:  # noqa: BLE001 - один битый товар не роняет пакет
-            results.append(
-                {
-                    "name": item.get("name", ""),
-                    "surface": None,
-                    "moisture_resistant": None,
-                    "noul_score": None,
-                    "status": f"error: {type(exc).__name__}: {exc}",
-                    "raw": None,
-                    "state": "",
-                }
-            )
+        except Exception as exc:
+            results.append({
+                "name": item.get("name", ""),
+                "surface": None, "surface_source": None,
+                "moisture_resistant": None, "moisture_source": None,
+                "status": f"error: {exc}", "raw": None, "state": ""
+            })
     return results
 
 
@@ -126,33 +119,26 @@ def _run_match(
 
 
 def _render_single_class(result: dict[str, Any]) -> None:
-    """Выводит классы отдельно: поверхность, влагостойкость, сырые ответы."""
+    """Выводит классы отдельно и показывает, что сработало: регулярка или модель."""
     left, right = st.columns(2)
 
-    left.metric(
-        "🏗 Поверхность",
-        result["surface"] or "—",
-    )
+    surface_src = result.get("surface_source")
+    surface_badge = f" ({surface_src})" if surface_src else ""
+    left.metric("🏗 Поверхность", f"{result['surface'] or '—'}{surface_badge}")
 
-    noul = result.get("noul_score")
-    if noul is not None:
+    moisture_src = result.get("moisture_source")
+    moisture_badge = f" ({moisture_src})" if moisture_src else ""
+    
+    if result["moisture_resistant"] is not None:
         label = "Влагостойкий" if result["moisture_resistant"] else "Обычный"
-        delta = f"score {noul:.2f}" if noul < 1.0 else None
-        right.metric("💧 Влагостойкость", label, delta)
+        right.metric("💧 Влагостойкость", f"{label}{moisture_badge}")
     else:
-        right.metric("💧 Влагостойкость", "—", "ошибка расчёта")
+        right.metric("💧 Влагостойкость", "—")
 
-    # Состояние, отправленное в judge
-    with st.expander("📋 Состояние (state) → judge", expanded=False):
-        st.json(result.get("state", ""))
-
-    # Сырые ответы
-    with st.expander("🤖 Сырые ответы judge", expanded=False):
-        raw = result.get("raw")
-        if raw:
-            st.json(raw)
-        else:
-            st.code(result.get("status", ""))
+    with st.expander("📋 Детали (Регулярки / Модель)", expanded=False):
+        st.code(result.get("state", ""))
+        if result.get("raw"):
+            st.json(result["raw"])
 
 
 def _render_results(results: list[dict[str, Any]]) -> None:

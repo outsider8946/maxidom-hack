@@ -434,10 +434,12 @@ def pick_products(
             problems.append(f"{label(category)}: нет валидных карточек")
             continue
 
-        if use_llm and llm and wish:
-            best = select_best_product(llm, wish, candidates)
+        if use_llm and llm:
+            # Если пожеланий нет, просим LLM выбрать просто лучший вариант
+            llm_query = wish if wish else "Выбери оптимальный вариант из списка для ремонта"
+            
+            best = select_best_product(llm, llm_query, candidates)
             product = parser.parse_product(best["meta"], best["doc"])
-            # Сохраняем причину
             llm_reasons[label(category)] = best.get("llm_reason", "")
         else:
             product = parser.parse_product(candidates[0]["meta"], candidates[0]["doc"])
@@ -529,15 +531,21 @@ def render_estimate(estimate: dict, picked: list[tuple[str, CatalogProduct]]) ->
 
     # Товар мог быть подобран и распознан, но не войти в набор работ сценария.
     counted = {item["product_id"] for work in works for item in work["items"]}
-    missed = [
-        label(category) for category, product in picked if product.id not in counted
-    ]
-    if missed:
+    missed_products = [(category, product) for category, product in picked if product.id not in counted]
+    
+    if missed_products:
+        missed_text = []
+        for category, product in missed_products:
+            reason = "не подходит под работы этого сценария"
+            # Проверяем, не отсеяла ли его влажность
+            if room.humidity == "high" and product.category in ("wall_tile", "wall_paint") and not product.moisture_resistant:
+                reason = "отфильтрован: не является влагостойким (для помещений с высокой влажностью)"
+            
+            missed_text.append(f"{label(category)} ({reason})")
+            
         st.info(
             "Не вошло в смету этого варианта ремонта: "
-            + ", ".join(missed)
-            + ". Эти работы калькулятор считает только в другом сценарии "
-            "или не имеет для них формул."
+            + ", ".join(missed_text)
         )
 
 

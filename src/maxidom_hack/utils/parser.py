@@ -116,6 +116,9 @@ class ProductParser:
 
         # Ищем "моющаяся" в характеристиках, названии или описании
         name_and_desc = f"{name} {description} {meta.get('marketing_description', '')}".lower()
+        # Если вдруг ML не разметил моющуюся, но в тексте есть "ванная" или "санузел" - это влагостойкий материал
+        if "ванн" in name_and_desc or "сануз" in name_and_desc:
+            moisture = True
         washable = any(
             "моющ" in key and str(value).lower() in ("да", "true", "1")
             for key, value in characteristics.items()
