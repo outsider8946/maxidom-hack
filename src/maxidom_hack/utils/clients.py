@@ -3,6 +3,10 @@ from typing import Any, Literal
 
 import numpy as np
 import torch
+import torch
+import sys
+import platform
+
 from dotenv import load_dotenv
 from frida_decisions import AsyncJudge
 from ollama import Client
@@ -12,12 +16,28 @@ from maxidom_hack.utils.enums import EmbeddingPrompts
 
 load_dotenv()
 
+def detect_device() -> str:
+    # 1. Проверяем CUDA (NVIDIA) - приоритет для Windows
+    if torch.cuda.is_available():
+        return "cuda"
+    
+    # 2. Проверяем MPS ТОЛЬКО на macOS
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        try:
+            if torch.backends.mps.is_available():
+                return "mps"
+        except ImportError:
+            pass
+            
+    # 3. Иначе CPU
+    return "cpu"
 
 class JudgeClient:
     # FRIDA Judge принимает torch.device(device) — "cuda" валидно.
-    def __init__(self, device: Literal["cpu", "cuda", "gpu", "mps"] = "mps") -> None:
-        self.device = device
+    def __init__(self, device: Literal["cpu", "cuda", "gpu", "mps"] | None = None) -> None:
+        self.device = device or detect_device()
         self.judge_model = self._load_judge_model()
+        #print(f"FRIDA Judge device: {self.device}")
 
     def _load_judge_model(self) -> AsyncJudge:
         """Load the judge model."""
@@ -62,8 +82,8 @@ class LLMClient:
 
 class EmbeddingClient:
     # "cuda" — реальное имя torch-устройства, которое принимает SentenceTransformer.
-    def __init__(self, device: Literal["cpu", "cuda", "gpu", "mps"] = "mps") -> None:
-        self.device = device
+    def __init__(self, device: Literal["cpu", "cuda", "gpu", "mps"] | None = None) -> None:
+        self.device = device or detect_device()
         self.embed_model = self._load_embedding_model()
 
     def _load_embedding_model(self) -> SentenceTransformer:

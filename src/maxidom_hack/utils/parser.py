@@ -79,7 +79,7 @@ class ProductParser:
         quantity = next(
             (
                 self._number(characteristics[key])
-                for key in ("объем", "литраж банки", "вес")
+                for key in ("объем", "литраж банки", "вес", "метраж упаковки") # добавил метраж, чтобы корректно учитывать бухты кабеля
                 if key in characteristics
             ),
             None,
@@ -113,10 +113,17 @@ class ProductParser:
             consumption = self._number(match.group(1)) if match else None
 
         moisture = bool(meta.get("moisture_resistant", False))
+
+        # Ищем "моющаяся" в характеристиках, названии или описании
+        name_and_desc = f"{name} {description} {meta.get('marketing_description', '')}".lower()
+        # Если вдруг ML не разметил моющуюся, но в тексте есть "ванная" или "санузел" - это влагостойкий материал
+        if "ванн" in name_and_desc or "сануз" in name_and_desc:
+            moisture = True
         washable = any(
             "моющ" in key and str(value).lower() in ("да", "true", "1")
             for key, value in characteristics.items()
-        )
+        ) or ("моющ" in name_and_desc)
+        
         return CatalogProduct(
             id=int(meta.get("product_id", 0)),
             name=name,

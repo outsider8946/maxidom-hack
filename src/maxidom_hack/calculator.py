@@ -189,8 +189,10 @@ class Calculator:
             )
 
         # Затирка: Площадь * Норма_расхода / Вес_упаковки
-        if grout and grout.consumption_per_m2 and grout.quantity_in_package:
-            kg = area * grout.consumption_per_m2
+        if grout and grout.quantity_in_package:
+            # используем дефолтное значение, если в карточке пусто
+            grout_consumption = grout.consumption_per_m2 or COEFFICIENTS["default_consumption"].get("tile_grout", 1.5)
+            kg = area * grout_consumption
             q = ceil(kg / grout.quantity_in_package)
             we.items.append(
                 LineItem(
@@ -201,7 +203,7 @@ class Calculator:
                     unit=grout.unit,
                     unit_price=grout.price,
                     total=q * grout.price,
-                    reason=f"Площадь {area:g} м² × норма {grout.consumption_per_m2} кг/м² ÷ {grout.quantity_in_package} кг (упаковка) = {q} шт.",
+                    reason=f"Площадь {area:g} м² × норма {grout_consumption} кг/м² ÷ {grout.quantity_in_package} кг = {q} шт.",
                 )
             )
         return we
@@ -384,9 +386,16 @@ class Calculator:
             if not p:
                 return
 
-            # ИСПРАВЛЕНО: всегда используем ceil для округления вверх
-            # int(qty) обрезает дробь вниз (например, 2.9 станет 2), а нам нужно округление вверх (ceil).
-            final_qty = ceil(qty)
+            # Считаем количество упаковок. 
+            # Если у товара есть метраж/объем упаковки (например, 5 м), делим на него.
+            # Для розеток и выключателей quantity_in_package = None, поэтому делим на 1.
+            package_len = p.quantity_in_package or 1.0 
+            final_qty = ceil(qty / package_len)
+
+            # Формируем красивую причину для сметы
+            reason_text = reason
+            if p.quantity_in_package:
+                reason_text += f". Нужно {qty:g} м. В упаковке {package_len:g} м. Итого: {final_qty} шт."
 
             items.append(
                 LineItem(
@@ -397,7 +406,7 @@ class Calculator:
                     unit=p.unit,
                     unit_price=p.price,
                     total=final_qty * p.price,
-                    reason=reason,
+                    reason=reason_text,
                 )
             )
 
