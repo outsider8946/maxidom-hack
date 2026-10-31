@@ -1,4 +1,6 @@
 from typing import Any
+import asyncio
+
 from maxidom_hack.utils.clients import JudgeClient
 from maxidom_hack.db.patterns import PatternRules, CategoryRules # <-- ИМПОРТИРУЕМ РЕГУЛЯРКИ
 
@@ -11,9 +13,13 @@ class Matcher:
         self.cat_rules = CategoryRules()
 
     def match_sync(self, item: dict[str, Any], threshold: float = 0.5) -> dict[str, Any]:
+        """Синхронная обёртка для вызова из синхронного кода."""
+        return asyncio.run(self.match(item, threshold))
+
+    async def match(self, item: dict[str, Any], threshold: float = 0.5) -> dict[str, Any]:
         """Синхронный матчинг: регулярки + модель (для Streamlit)."""
         
-        # 1. Прогоняем регулярки (как в annotater.py)
+        # 1. Прогоняем регулярки
         text = PatternRules.build_text(item)
         surface = PatternRules.detect_surface(text, item.get("categories"))
         moisture = PatternRules.detect_moisture(text)
@@ -32,12 +38,11 @@ class Matcher:
             }
 
         # 3. Если чего-то не хватает - формируем запрос к модели (только по пропущенным полям)
-        # Используем метод из annotater (или пишем локально)
         request = self._format_request(item, ask_surface=(surface is None), ask_moisture=(moisture is None))
         
         # Отправляем в модель (JudgeClient)
         try:
-            raw = self.judge_client.judge(request)
+            raw = await self.judge_client.judge(request)
             answers = raw.get("answers", {})
             
             if surface is None and "surface" in answers:

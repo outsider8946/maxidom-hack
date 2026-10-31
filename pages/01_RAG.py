@@ -1,22 +1,21 @@
-"""Streamlit UI: поэтапный мастер подбора материалов и расчёт сметы."""
+"""Streamlit UI: поэтапный мастер подбора материалов и расчёт сметы (через API)."""
 
+import json
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from maxidom_hack.calculator import Calculator
-from maxidom_hack.db.retriever import ProductRetriever
-from maxidom_hack.utils.categories import CATEGORIES, label, db_categories
-from maxidom_hack.utils.clients import EmbeddingClient
-from maxidom_hack.utils.devices import detect_device
-from maxidom_hack.utils.models import CatalogProduct, Room
-from maxidom_hack.utils.parser import ProductParser
+# Добавляем корень проекта в путь для импорта ui/utils
+PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-from maxidom_hack.utils.llm_filter import select_best_product
-from maxidom_hack.utils.clients import LLMClient
+from ui.utils import get_estimate_pipeline
 
-DEVICE = detect_device()
+# ---------- константы ----------
 
 PURPOSES = {
     "living": "Жилая комната",
@@ -27,7 +26,6 @@ PURPOSES = {
 HUMIDITY = {"low": "Низкая", "medium": "Средняя", "high": "Высокая"}
 VARIANTS = {"capital": "Капитальный", "cosmetic": "Косметический"}
 
-# Назначения, где стены и пол отделываются плиткой вместо обоев и ламината.
 WET_PURPOSES = ("bathroom", "kitchen")
 SKIP_LABEL = "Пропустить этап"
 
@@ -40,6 +38,21 @@ WORK_TITLES = {
     "wall_wallpaper": "Обои",
     "skirting": "Плинтус",
     "electrics": "Электрика",
+}
+
+LABELS = {
+    "floor_tile": "Плитка на пол",
+    "wall_tile": "Плитка на стены",
+    "floor_laminate": "Ламинат",
+    "wall_paint": "Краска для стен",
+    "ceiling_paint": "Краска для потолка",
+    "wall_wallpaper": "Обои",
+    "tile_glue": "Клей для плитки",
+    "tile_grout": "Затирка для плитки",
+    "skirting": "Плинтус",
+    "socket": "Розетки",
+    "switch": "Выключатели",
+    "cable": "Кабель",
 }
 
 
@@ -85,9 +98,6 @@ STAGE_VARIANT = Stage(
     hint="Набор следующих шагов зависит от этого выбора. Пропуск = капитальный.",
 )
 
-@st.cache_resource(show_spinner="Инициализируем LLM...")
-def init_llm() -> LLMClient:
-    return LLMClient()
 
 def option(
     value: str, title: str, adds: tuple[str, ...]
@@ -96,14 +106,7 @@ def option(
 
 
 def stage_plan(variant: str, purpose: str, chosen: set[str]) -> list[Stage]:
-    """Этапы, доступные при выбранном типе ремонта и назначении комнаты.
-
-    Взаимоисключающие материалы собраны в один этап: стены можно либо оклеить,
-    либо покрасить, поэтому в косметическом ремонте жилой комнаты они даны
-    двумя вариантами одного шага.
-    """
-    # Плитка в сценариях калькулятора считается только в капитальном ремонте,
-    # поэтому в косметическом санузел остаётся с обоями/краской и ламинатом.
+    """Этапы, доступные при выбранном типе ремонта и назначении комнаты."""
     wet = purpose in WET_PURPOSES and variant == "capital"
 
     if wet:
@@ -146,7 +149,7 @@ def stage_plan(variant: str, purpose: str, chosen: set[str]) -> list[Stage]:
             if wet
             else option("floor_laminate", "Ламинат", ("floor_laminate",)),
         ),
-        wish_hint="Например: ламинат 33 класса, дуб натуральный",
+        wish_hint="Например: ламинат 33 класс, дуб натуральный",
     )
 
     stages = [STAGE_VARIANT, walls, floor]
@@ -165,7 +168,6 @@ def stage_plan(variant: str, purpose: str, chosen: set[str]) -> list[Stage]:
             )
         )
 
-    # Клей и затирка — не самостоятельные работы, а спутники плитки.
     if {"wall_tile", "floor_tile"} & chosen:
         stages.append(
             Stage(
@@ -212,60 +214,7 @@ def stage_plan(variant: str, purpose: str, chosen: set[str]) -> list[Stage]:
     return stages
 
 
-# ---------- инициализация классов один раз на процесс ----------
-
-
-@st.cache_resource(show_spinner="Инициализируем RAG: эмбеддинги и ChromaDB...")
-def init_retriever() -> ProductRetriever | None:
-    """Поднимает эмбеддинг-модель и коллекцию ChromaDB."""
-    try:
-        retriever = ProductRetriever(EmbeddingClient(device=DEVICE))
-    except Exception as exc:  # noqa: BLE001 - UI не должен падать из-за ML-слоя
-        st.error(f"RAG не инициализирован: {exc}")
-        return None
-    if not retriever.available():
-        st.error("Коллекция ChromaDB пуста — сначала загрузи товары через DBLoader.")
-        return None
-    return retriever
-
-
-@st.cache_resource(show_spinner="Инициализируем Калькулятора...")
-def init_calculator() -> Calculator:
-    return Calculator()
-
-
-@st.cache_resource(show_spinner="Инициализируем парсер...")
-def init_parser() -> ProductParser:
-    return ProductParser()
-
-
-# ---------- виджеты ----------
-
-
-def room_form() -> Room:
-    """Параметры помещения — вход для калькулятора."""
-    purpose = st.selectbox(
-        "Назначение", list(PURPOSES), format_func=PURPOSES.__getitem__
-    )
-    humidity = st.selectbox(
-        "Влажность", list(HUMIDITY), format_func=HUMIDITY.__getitem__
-    )
-    length = st.number_input("Длина, м", 1.0, 30.0, 4.0, 0.1)
-    width = st.number_input("Ширина, м", 1.0, 30.0, 3.0, 0.1)
-    height = st.number_input("Высота, м", 2.0, 6.0, 2.7, 0.1)
-    doors = st.number_input("Двери, шт.", 0, 10, 1)
-    windows = st.number_input("Окна, шт.", 0, 10, 1)
-
-    return Room(
-        length=length,
-        width=width,
-        height=height,
-        purpose=purpose,
-        humidity=humidity,
-        doors=int(doors),
-        windows=int(windows),
-    )
-
+# ---------- состояние ----------
 
 ALL_OPTION_STAGES: tuple[Stage, ...] = tuple(
     stage
@@ -289,11 +238,7 @@ def reset_wizard() -> None:
 
 
 def context_suffix() -> str:
-    """Контекст мастера: комната и тип ремонта меняют набор вариантов этапов.
-
-    Ответы хранятся по контексту, поэтому выбор другой комнаты или другого
-    типа ремонта не подмешивается к текущему расчёту.
-    """
+    """Контекст мастера: комната и тип ремонта меняют набор вариантов этапов."""
     return (
         f"{st.session_state.get('room_purpose', '')}"
         f"_{st.session_state.get('room_humidity', '')}"
@@ -302,11 +247,7 @@ def context_suffix() -> str:
 
 
 def stage_widget_key(stage_key: str) -> str:
-    """Ключ виджета выбора этапа.
-
-    Первый этап статичен, поэтому его ключ не зависит от контекста: иначе
-    выбор типа ремонта терялся бы сразу после его же применения.
-    """
+    """Ключ виджета выбора этапа."""
     if stage_key == "variant":
         return "stage_variant"
     return f"stage_{context_suffix()}_{stage_key}"
@@ -318,12 +259,7 @@ def wish_widget_key(stage_key: str) -> str:
 
 
 def read_answers(stages: list[Stage]) -> dict[str, str | None]:
-    """Выбор пользователя по этапам: ключ этапа -> value варианта.
-
-    Streamlit убирает из session_state значения виджетов, которых не было в
-    текущем прогоне, поэтому пройденные шаги читаются из сохранённых ответов,
-    а текущий шаг — из виджета.
-    """
+    """Выбор пользователя по этапам."""
     saved = st.session_state.get(ANSWERS_KEY) or {}
     answers: dict[str, str | None] = dict(saved.get(context_suffix(), {}))
     for stage in stages:
@@ -338,7 +274,7 @@ def read_answers(stages: list[Stage]) -> dict[str, str | None]:
 
 
 def read_wishes(stages: list[Stage]) -> dict[str, str]:
-    """Текстовые пожелания по этапам, включая сохранённые с пройденных шагов."""
+    """Текстовые пожелания по этапам."""
     saved = st.session_state.get(WISHES_KEY) or {}
     wishes: dict[str, str] = dict(saved.get(context_suffix(), {}))
     for stage in stages:
@@ -351,7 +287,7 @@ def read_wishes(stages: list[Stage]) -> dict[str, str]:
 def save_progress(
     stages: list[Stage], answers: dict[str, str | None], wishes: dict[str, str]
 ) -> None:
-    """Сохраняет ответы и пожелания текущего контекста перед переходом."""
+    """Сохраняет ответы и пожелания текущего контекста."""
     (st.session_state.setdefault(ANSWERS_KEY, {}))[context_suffix()] = dict(answers)
     (st.session_state.setdefault(WISHES_KEY, {}))[context_suffix()] = dict(wishes)
     if answers.get("variant"):
@@ -371,7 +307,7 @@ def chosen_categories(answers: dict[str, str | None]) -> set[str]:
 def collect_wishes(
     stages: list[Stage], answers: dict[str, str | None], wishes: dict[str, str]
 ) -> dict[str, str]:
-    """Итоговый словарь «категория калькулятора → текстовые пожелания»."""
+    """Итоговый словарь «категория → пожелания»."""
     result: dict[str, str] = {}
     for stage in stages:
         picked = stage.option(answers.get(stage.key))
@@ -379,140 +315,66 @@ def collect_wishes(
             continue
         wish = str(wishes.get(stage.key, "")).strip()
         for category in picked.adds:
-            # Категория может попасть из двух этапов (краска стен и потолка).
             merged = f"{result.get(category, '')} {wish}".strip()
             result[category] = merged
     return result
 
 
-# ---------- пайплайн: БД -> парсер -> калькулятор ----------
-
-
-def pick_products(
-    retriever: ProductRetriever,
-    parser: ProductParser,
-    wishes: dict[str, str],
-    limit: int = 20,
-    use_llm: bool = False,
-    llm: LLMClient | None = None,
-) -> tuple[list[tuple[str, CatalogProduct]], list[str], dict[str, str]]: # <-- Добавили dict
-    
-    picked: list[tuple[str, CatalogProduct]] = []
-    problems: list[str] = []
-    llm_reasons: dict[str, str] = {} # <-- Сюда будем складывать причины
-
-    for category, wish in wishes.items():
-        if wish:
-            found = retriever.search_raw(wish, [category], limit=5)
-        else:
-            found = retriever.filter([category], limit=5)
-            
-        raw_metadatas = found.get("metadatas") or [[]]
-        metadatas = raw_metadatas[0] if raw_metadatas and isinstance(raw_metadatas[0], list) else raw_metadatas
-        raw_documents = found.get("documents") or [[]]
-        documents = raw_documents[0] if raw_documents and isinstance(raw_documents[0], list) else raw_documents
-
-        if not metadatas or not documents:
-            problems.append(f"{label(category)}: ничего не найдено")
-            continue
-
-        candidates = []
-        for meta, doc in zip(metadatas, documents):
-            if not meta.get("price") or not meta.get("unit"):
-                continue
-            candidates.append({
-                "id": meta.get("product_id"),
-                "name": doc.split("\n")[0],
-                "description": doc.split("\n")[1] if "\n" in doc else "",
-                "price": meta.get("price"),
-                "unit": meta.get("unit"),
-                "meta": meta,
-                "doc": doc
-            })
-
-        if not candidates:
-            problems.append(f"{label(category)}: нет валидных карточек")
-            continue
-
-        if use_llm and llm:
-            # Если пожеланий нет, просим LLM выбрать просто лучший вариант
-            llm_query = wish if wish else "Выбери оптимальный вариант из списка для ремонта"
-            
-            best = select_best_product(llm, llm_query, candidates)
-            product = parser.parse_product(best["meta"], best["doc"])
-            llm_reasons[label(category)] = best.get("llm_reason", "")
-        else:
-            product = parser.parse_product(candidates[0]["meta"], candidates[0]["doc"])
-
-        picked.append((category, product))
-
-    return picked, problems, llm_reasons
+# ---------- рендер ----------
 
 
 def render_wishes(wishes: dict[str, str]) -> None:
-    """Показывает итоговый словарь выбора: этап, товарная группа, пожелания."""
+    """Показывает итоговый словарь выбора."""
     frame = pd.DataFrame(
         [
             {
-                "Категория": label(category),
+                "Категория": LABELS.get(cat, cat),
                 "Пожелания": wish or "—",
             }
-            for category, wish in wishes.items()
+            for cat, wish in wishes.items()
         ]
     )
     st.dataframe(frame, hide_index=True, width="stretch")
 
-
-
-def render_parsed(picked: list[tuple[str, CatalogProduct]]) -> None:
-    """Показывает, что парсер извлёк из карточек — по этим полям идёт расчёт."""
-    frame = pd.DataFrame(
-        [
-            {
-                "Тип": label(category),
-                "Товар": product.name[:55],
-                "Категория расчёта": product.category,
-                "Площадь упак., м²": product.package_area,
-                "Объём упак.": product.quantity_in_package,
-                "Расход": product.consumption_per_m2,
-                "Цена": product.price,
-                "Ед.": product.unit,
-            }
-            for category, product in picked
-        ]
-    )
-    st.dataframe(frame, hide_index=True, width="stretch")
-
-    # Калькулятор считает только по известным внутренним категориям.
-    unknown = [
-        product.name[:40] for _, product in picked if product.category not in CATEGORIES
-    ]
-    if unknown:
-        st.warning(
-            "Категория не распознана калькулятором, товар в смету не попадёт: "
-            + ", ".join(unknown)
-        )
 
 def render_llm_reasons(llm_reasons: dict[str, str]) -> None:
-    """Отображает отдельный бар с обоснованием выбора от LLM."""
+    """Отображает обоснование выбора от LLM."""
     if not llm_reasons:
         return
-        
     st.subheader("Обоснование от LLM")
     for category, reason in llm_reasons.items():
-        # Если причина пустая, вообще не выводим эту плашку
         if not reason or not str(reason).strip():
-            continue 
-            
+            continue
         if "нет подходящего" in reason.lower() or "не подходит" in reason.lower() or "⚠️" in reason:
             st.warning(f"**{category}**: {reason}")
         else:
             st.info(f"**{category}**: {reason}")
 
-def render_estimate(estimate: dict, picked: list[tuple[str, CatalogProduct]]) -> None:
-    """Выводит смету: итог, разбивку по работам и непопавшие в неё типы."""
-    works = [work for work in estimate["works"] if work["items"]]
-    st.metric("Итого по смете", f"{estimate['total']:,.0f} ₽")
+
+def render_parsed(picked: list[dict]) -> None:
+    """Показывает товары, подобранные из базы."""
+    frame = pd.DataFrame(
+        [
+            {
+                "Тип": LABELS.get(p.get("category", ""), p.get("category", "")),
+                "Товар": p.get("name", "")[:55],
+                "Категория расчёта": p.get("calc_category", ""),
+                "Площадь упак., м²": p.get("package_area"),
+                "Объём упак.": p.get("quantity_in_package"),
+                "Расход": p.get("consumption_per_m2"),
+                "Цена": p.get("price"),
+                "Ед.": p.get("unit", ""),
+            }
+            for p in picked
+        ]
+    )
+    st.dataframe(frame, hide_index=True, width="stretch")
+
+
+def render_estimate(estimate: dict, picked: list[dict]) -> None:
+    """Выводит смету."""
+    works = [work for work in estimate.get("works", []) if work.get("items")]
+    st.metric("Итого по смете", f"{estimate.get('total', 0):,.0f} ₽")
 
     if not works:
         st.warning(
@@ -529,27 +391,18 @@ def render_estimate(estimate: dict, picked: list[tuple[str, CatalogProduct]]) ->
             frame = pd.DataFrame(work["items"])
             st.dataframe(frame, hide_index=True, width="stretch")
 
-    # Товар мог быть подобран и распознан, но не войти в набор работ сценария.
-    counted = {item["product_id"] for work in works for item in work["items"]}
-    missed_products = [(category, product) for category, product in picked if product.id not in counted]
-    
-    if missed_products:
+    counted = {item["product_id"] for work in works for item in work.get("items", [])}
+    missed = [p for p in picked if p.get("id") not in counted]
+
+    if missed:
         missed_text = []
-        for category, product in missed_products:
+        for p in missed:
             reason = "не подходит под работы этого сценария"
-            # Проверяем, не отсеяла ли его влажность
-            if room.humidity == "high" and product.category in ("wall_tile", "wall_paint") and not product.moisture_resistant:
-                reason = "отфильтрован: не является влагостойким (для помещений с высокой влажностью)"
-            
-            missed_text.append(f"{label(category)} ({reason})")
-            
+            missed_text.append(f"{LABELS.get(p.get('category', ''), p.get('category', ''))} ({reason})")
         st.info(
             "Не вошло в смету этого варианта ремонта: "
             + ", ".join(missed_text)
         )
-
-
-# ---------- мастер ----------
 
 
 def render_stage(
@@ -559,11 +412,7 @@ def render_stage(
     answer: str | None,
     wish: str,
 ) -> None:
-    """Один шаг мастера: взаимоисключающие варианты и поле пожеланий.
-
-    Сохранённые выбор и пожелание передаются начальными значениями: при
-    возврате «Назад» виджет создаётся заново и сам по себе ничего не помнит.
-    """
+    """Один шаг мастера."""
     st.progress((index + 1) / (total + 1), text=f"Шаг {index + 1} из {total + 1}")
     st.subheader(stage.title)
     if stage.hint:
@@ -592,27 +441,62 @@ def render_stage(
 
 # ---------- страница ----------
 
-retriever = init_retriever()
-calculator = init_calculator()
-parser = init_parser()
+# Проверка доступности backend
+from ui.utils import get_health
+
+health = get_health()
+if health.get("status") != "ok":
+    st.error(
+        "Backend недоступен. Запустите: `uvicorn server.main:app --host 0.0.0.0 --port 8000`"
+    )
+    st.stop()
 
 with st.sidebar:
     st.header("RAG")
-    if retriever:
-        st.metric("Товаров в базе", f"{retriever.size:,}")
+    st.metric("Товаров в базе", f"{health.get('products_count', '?'):,}")
     if st.button("Пройти заново", width="stretch"):
         reset_wizard()
         st.rerun()
 
     st.header("Помещение")
-    room = room_form()
+    purpose = st.selectbox(
+        "Назначение", list(PURPOSES), format_func=PURPOSES.__getitem__
+    )
+    humidity = st.selectbox(
+        "Влажность", list(HUMIDITY), format_func=HUMIDITY.__getitem__
+    )
+    length = st.number_input("Длина, м", 1.0, 30.0, 4.0, 0.1)
+    width = st.number_input("Ширина, м", 1.0, 30.0, 3.0, 0.1)
+    height = st.number_input("Высота, м", 2.0, 6.0, 2.7, 0.1)
+    doors = st.number_input("Двери, шт.", 0, 10, 1)
+    windows = st.number_input("Окна, шт.", 0, 10, 1)
+
+    room = {
+        "length": length,
+        "width": width,
+        "height": height,
+        "purpose": purpose,
+        "humidity": humidity,
+        "doors": int(doors),
+        "windows": int(windows),
+    }
+    floor_area = length * width
+    perimeter = 2 * (length + width)
+    wall_area_gross = perimeter * height
+    door_area = 1.8
+    window_area = 1.5
+    wall_area = max(wall_area_gross - doors * door_area - windows * window_area, 0.0)
     st.caption(
-        f"Пол: {room.floor_area:.1f} м² · Стены: {room.wall_area:.1f} м² · "
-        f"Периметр: {room.perimeter:.1f} м"
+        f"Пол: {floor_area:.1f} м² · Стены: {wall_area:.1f} м² · "
+        f"Периметр: {perimeter:.1f} м"
     )
 
     st.header("Настройки")
-    use_llm = st.toggle("Использовать LLM для выбора", value=False, help="Qwen3-4B выберет лучший товар из топ-3 и объяснит выбор.")
+    use_llm = st.toggle(
+        "Использовать LLM для выбора",
+        value=False,
+        help="Qwen3-4B выберет лучший товар из топ-3 и объяснит выбор.",
+    )
 
 st.title("Поэтапный подбор материалов")
 st.caption(
@@ -620,19 +504,11 @@ st.caption(
     "Пожелания текстом уточняют подбор товара в каталоге."
 )
 
-if not retriever:
-    st.stop()
-
-# Ключи комнат входят в ключи виджетов этапов: при их смене набор вариантов
-# меняется, и ответы прошлой комнаты не должны остаться в новых виджетах.
-st.session_state["room_purpose"] = room.purpose
-st.session_state["room_humidity"] = room.humidity
+st.session_state["room_purpose"] = purpose
+st.session_state["room_humidity"] = humidity
 st.session_state.setdefault("picked_variant", "capital")
 st.session_state.setdefault("wizard_step", 0)
 
-# Первый шаг статичен, поэтому тип ремонта читается до сборки остальных этапов:
-# именно он решает, какие шаги идут следом. После первого шага виджет пропадает,
-# и тип ремонта держится в picked_variant.
 variant_title = st.session_state.get("stage_variant")
 if variant_title is not None:
     variant = next(
@@ -642,10 +518,8 @@ if variant_title is not None:
     st.session_state.picked_variant = variant
 variant = str(st.session_state.picked_variant)
 
-# Этап «Клей и затирка» появляется только когда выбрана плитка, поэтому список
-# этапов собирается в два прохода: сначала без него, затем по выбору стен и пола.
-base_plan = stage_plan(variant, room.purpose, set())
-stages = stage_plan(variant, room.purpose, chosen_categories(read_answers(base_plan)))
+base_plan = stage_plan(variant, purpose, set())
+stages = stage_plan(variant, purpose, chosen_categories(read_answers(base_plan)))
 answers = read_answers(stages)
 wishes = read_wishes(stages)
 
@@ -686,27 +560,15 @@ else:
     render_wishes(selection)
 
     with st.status("Подбираю товары и считаю смету...", expanded=False):
-        picked, problems, llm_reasons = pick_products(
-            retriever, 
-            parser, 
-            selection, 
-            use_llm=use_llm, 
-            llm=init_llm() if use_llm else None
-        )
-        estimate = calculator.calc_estimate(
-            room, variant, [product for _, product in picked]
-        ).to_dict()
+        result = get_estimate_pipeline(room, variant, selection, use_llm)
 
-    for problem in problems:
+    for problem in result.get("problems", []):
         st.warning(problem)
 
-    # === БЕЗОПАСНЫЙ ВЫВОД ОБОСНОВАНИЙ ===
-    # Если LLM выключена, llm_reasons будет пустым, и функция просто завершится
-    render_llm_reasons(llm_reasons)
-    # ===================================
+    render_llm_reasons(result.get("llm_reasons", {}))
 
     st.subheader("Товары из базы")
-    render_parsed(picked)
+    render_parsed(result.get("picked", []))
 
     st.subheader("Смета")
-    render_estimate(estimate, picked)
+    render_estimate(result, result.get("picked", []))

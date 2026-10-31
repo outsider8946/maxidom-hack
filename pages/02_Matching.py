@@ -1,20 +1,23 @@
-"""Страница матчинга товаров: классы поверхности и влагостойкости через FRIDA-Decisions.
+"""Страница матчинга товаров: классы поверхности и влагостойкости через API.
 
 Поддерживает загрузку JSON (отдельный файл или вставка) и ручной ввод.
 Результаты выводятся отдельно по каждому товару + общая таблица.
 """
 
 import json
+import sys
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import streamlit as st
 
-from maxidom_hack.matching.matcher import Matcher
-from maxidom_hack.utils.clients import JudgeClient
-from maxidom_hack.utils.devices import detect_device
+# Добавляем корень проекта в путь для импорта ui/utils
+PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-DEVICE = detect_device()
+from ui.utils import match_products
 
 SAMPLE_JSON = {
     "name": "Плитка настенная керамическая ALMA CERAMICA",
@@ -43,11 +46,7 @@ def _characteristics_from_text(text: str) -> list[dict[str, str]]:
 def _parse_json_input(
     uploaded: Any, pasted: str
 ) -> tuple[list[dict[str, Any]], str | None]:
-    """Пытается извлечь список товаров из файла или текста.
-
-    Accepts: single dict, list of dicts, or a JSON string.
-    Returns (items, error_message).
-    """
+    """Пытается извлечь список товаров из файла или текста."""
     if uploaded is not None:
         try:
             data = json.load(uploaded)
@@ -75,46 +74,6 @@ def _parse_json_input(
     return [], "JSON содержит объект, ожидаем список товаров или одиночную карточку"
 
 
-# ---------- judge и matcher: ленивая инициализация ----------
-
-
-@st.cache_resource(show_spinner="Загружаем judge-модель FRIDA-Decisions...")
-def _init_matcher() -> Matcher:
-    """Возвращает Matcher, инициализированный JudgeClient для текущего устройства."""
-    return Matcher(JudgeClient(device=DEVICE))
-
-
-def _run_match(
-    matcher: Matcher, items: list[dict[str, Any]], threshold: float
-) -> list[dict[str, Any]]:
-    """Прогоняет список товаров через matcher (регулярки + judge)."""
-    results: list[dict[str, Any]] = []
-    for item in items:
-        try:
-            # Используем наш новый синхронный метод!
-            parsed = matcher.match_sync(item, threshold)
-            results.append(
-                {
-                    "name": item.get("name", ""),
-                    "surface": parsed["surface"],
-                    "surface_source": parsed.get("surface_source"),
-                    "moisture_resistant": parsed["moisture_resistant"],
-                    "moisture_source": parsed.get("moisture_source"),
-                    "status": "ok",
-                    "raw": parsed.get("raw_model_response"),
-                    "state": f"Регулярки: surface={parsed.get('surface_source')}, moisture={parsed.get('moisture_source')}"
-                }
-            )
-        except Exception as exc:
-            results.append({
-                "name": item.get("name", ""),
-                "surface": None, "surface_source": None,
-                "moisture_resistant": None, "moisture_source": None,
-                "status": f"error: {exc}", "raw": None, "state": ""
-            })
-    return results
-
-
 # ---------- рендер результатов ----------
 
 
@@ -128,7 +87,7 @@ def _render_single_class(result: dict[str, Any]) -> None:
 
     moisture_src = result.get("moisture_source")
     moisture_badge = f" ({moisture_src})" if moisture_src else ""
-    
+
     if result["moisture_resistant"] is not None:
         label = "Влагостойкий" if result["moisture_resistant"] else "Обычный"
         right.metric("💧 Влагостойкость", f"{label}{moisture_badge}")
@@ -153,7 +112,6 @@ def _render_results(results: list[dict[str, Any]]) -> None:
                 "Товар": r["name"],
                 "Поверхность": r["surface"] or "—",
                 "Влагостойкий": r["moisture_resistant"] if r["status"] == "ok" else "—",
-                "noul": r.get("noul_score"),
                 "Статус": r["status"],
             }
             for r in results
@@ -229,14 +187,12 @@ with tab_json:
     if st.button(
         "Определить классы", key="match_json", type="primary", disabled=not items
     ):
-        try:
-            matcher = _init_matcher()
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Не удалось загрузить модель: {exc}")
-            st.stop()
-
         with st.status("Запускаю judge-модель...", expanded=False):
-            results = _run_match(matcher, items[:limit], threshold)
+            try:
+                results = match_products(items[:limit], threshold, limit)
+            except Exception as exc:
+                st.error(f"Ошибка: {exc}")
+                results = []
 
         _render_results(results)
 
@@ -285,13 +241,11 @@ with tab_manual:
     if st.button(
         "Определить классы", key="match_manual", type="primary", disabled=not name
     ):
-        try:
-            matcher = _init_matcher()
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Не удалось загрузить модель: {exc}")
-            st.stop()
-
         with st.status("Запускаю judge-модель...", expanded=False):
-            results = _run_match(matcher, [item], threshold)
+            try:
+                results = match_products([item], threshold, 1)
+            except Exception as exc:
+                st.error(f"Ошибка: {exc}")
+                results = []
 
         _render_results(results)
